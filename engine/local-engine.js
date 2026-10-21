@@ -113,7 +113,9 @@ async function reportApplicationResult(portal, appData) {
         title: appData.title,
         company: appData.company || '',
         job_url: appData.link || '',
-        status: appData.status || 'Submitted',
+        status: appData.status || 'Application prepared',
+        verification_evidence: appData.verification_evidence || appData.execution_log || '',
+        execution_log: appData.execution_log || '',
         verified: appData.verified ? 1 : 0
       })
     });
@@ -190,7 +192,16 @@ function setupConsoleListener(page, portalName, config, signal) {
       reportApplicationResult(portalName, {
         title: titlem ? titlem[1].trim() : 'Applied Role',
         status: 'Submitted',
+        verification_evidence: clean,
         verified: 1
+      });
+    } else if (/DRY_RUN — would click/i.test(clean) && !signal.aborted) {
+      const titlem = clean.match(/(?:would click)[^:]*:?\s*(.+)/i);
+      reportApplicationResult(portalName, {
+        title: titlem ? titlem[1].trim() : 'Prepared Role',
+        status: 'Application prepared',
+        verification_evidence: clean,
+        verified: 0
       });
     }
   });
@@ -313,6 +324,8 @@ async function runAutomationCycle() {
               company: '',
               link: extJob.href,
               status: extResult.status === 'applied' ? 'Submitted' : extResult.status === 'would-apply' ? 'Application prepared' : 'Submission uncertain',
+              verification_evidence: extResult.detail || '',
+              execution_log: extResult.detail || '',
               verified: extResult.status === 'applied' ? 1 : 0
             });
           }

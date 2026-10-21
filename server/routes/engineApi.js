@@ -64,6 +64,24 @@ router.get('/sync-config', authenticateEngine, (req, res) => {
   });
 });
 
+// Helper to resolve company name without fabricating names
+function resolveCompanyName(userId, portal, jobUrl, providedCompany) {
+  let company = (providedCompany || '').trim();
+  if (company && company !== 'N/A' && company !== 'Unknown company') {
+    return company;
+  }
+
+  // Look up discovered_jobs by user_id and job_url
+  if (jobUrl && jobUrl.trim() !== '') {
+    const discovered = db.prepare('SELECT company FROM discovered_jobs WHERE user_id = ? AND portal = ? AND (original_url = ? OR job_identifier = ?)').get(userId, portal, jobUrl.trim(), jobUrl.trim());
+    if (discovered && discovered.company && discovered.company.trim() !== '' && discovered.company !== 'N/A') {
+      return discovered.company.trim();
+    }
+  }
+
+  return company || 'Unknown company';
+}
+
 // Report a discovered job from local engine Playwright run
 router.post('/report-job', authenticateEngine, (req, res) => {
   const userId = req.user.id;
@@ -72,6 +90,8 @@ router.post('/report-job', authenticateEngine, (req, res) => {
   if (!portal || !original_url || !title) {
     return res.status(400).json({ error: 'Portal, original_url, and title are required.' });
   }
+
+  const resolvedCompany = resolveCompanyName(userId, portal, original_url, company);
 
   const profile = db.prepare('SELECT * FROM profiles WHERE user_id = ?').get(userId) || {};
   let prefs = db.prepare('SELECT * FROM job_preferences WHERE user_id = ?').get(userId) || {};
@@ -83,7 +103,7 @@ router.post('/report-job', authenticateEngine, (req, res) => {
     }
   });
 
-  const jobObj = { portal, original_url, job_identifier: job_identifier || original_url, title, company, location, remote_type, salary, experience_req, job_type, description };
+  const jobObj = { portal, original_url, job_identifier: job_identifier || original_url, title, company: resolvedCompany, location, remote_type, salary, experience_req, job_type, description };
   const matchResult = calculateJobMatch(jobObj, profile, prefs);
 
   const jobId = crypto.randomUUID();
@@ -97,12 +117,12 @@ router.post('/report-job', authenticateEngine, (req, res) => {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(user_id, portal, job_identifier) DO UPDATE SET
         title = excluded.title,
-        company = CASE WHEN excluded.company != '' THEN excluded.company ELSE discovered_jobs.company END,
+        company = CASE WHEN excluded.company != '' AND excluded.company != 'Unknown company' THEN excluded.company ELSE discovered_jobs.company END,
         salary = excluded.salary,
         match_score = excluded.match_score,
         match_explanation = excluded.match_explanation
     `).run(
-      jobId, userId, portal, original_url, job_identifier || original_url, title, company || '', location || '',
+      jobId, userId, portal, original_url, job_identifier || original_url, title, resolvedCompany, location || '',
       remote_type || 'Onsite', salary || '', experience_req || '', job_type || '', posting_date || '', description || '',
       matchResult.matchScore, matchResult.explanation, JSON.stringify(matchResult.missingSkills),
       matchResult.isEligible ? 'Matched' : 'Discovered'
@@ -114,8 +134,8 @@ router.post('/report-job', authenticateEngine, (req, res) => {
   }
 });
 
-// Credible Confirmation Verification Patterns
-const CREDIBLE_CONFIRMATION_PATTERNS = /thank you|thanks for (applying|your interest)|application (has been )?(received|submitted|sent|complete)|successfully applied|we (have )?received your application|your application is in|applied stamp confirmed|dialog closed, 'applied' stamp confirmed|confirmed after \d+ step\(s\)|verified: in .* applied list/i;
+// Tightened Credible Confirmation Verification Patterns (Application-Specific Only)
+const CREDIBLE_CONFIRMATION_PATTERNS = /thank you for applying|thanks for applying|application (has been )?(received|submitted|sent|complete)|successfully applied|we (have )?received your application|your application is in|applied stamp confirmed|dialog closed, 'applied' stamp confirmed|confirmed after \d+ step\(s\)|verified: in .* applied list/i;
 
 // Report an application attempt or successful submission from local engine
 router.post('/report-application', authenticateEngine, (req, res) => {
@@ -126,24 +146,17 @@ router.post('/report-application', authenticateEngine, (req, res) => {
     return res.status(400).json({ error: 'Portal and title are required.' });
   }
 
-  // Resolve missing or N/A company from discovered_jobs
-  if (!company || company.trim() === '' || company.toUpperCase() === 'N/A') {
-    const discovered = db.prepare('SELECT company FROM discovered_jobs WHERE user_id = ? AND portal = ? AND (original_url = ? OR job_identifier = ?)').get(userId, portal, job_url || '', job_url || '');
-    if (discovered && discovered.company && discovered.company.trim() !== '') {
-      company = discovered.company.trim();
-    }
-  }
-
-  const normalizedCompany = (company || '').trim();
+  const normalizedCompany = resolveCompanyName(userId, portal, job_url, company);
   const normalizedUrl = (job_url || '').trim();
   const evidenceText = (verification_evidence || execution_log || '').trim();
 
-  // Evaluate Accurate Application Lifecycle Status
+  // Strict Evaluation of Application Lifecycle Status & Verification Rules
   let finalStatus = status || 'Application prepared';
-  let isVerified = verified ? 1 : 0;
+  let isVerified = 0;
 
   if (finalStatus === 'Submitted') {
-    if (CREDIBLE_CONFIRMATION_PATTERNS.test(evidenceText) || isVerified === 1) {
+    // Requires application-specific confirmation evidence in evidenceText
+    if (evidenceText && CREDIBLE_CONFIRMATION_PATTERNS.test(evidenceText)) {
       finalStatus = 'Submitted';
       isVerified = 1;
     } else {
@@ -154,6 +167,11 @@ router.post('/report-application', authenticateEngine, (req, res) => {
   } else if (finalStatus === 'Application prepared' || finalStatus === 'would-apply') {
     finalStatus = 'Application prepared';
     isVerified = 0;
+  } else if (finalStatus === 'Submission uncertain') {
+    finalStatus = 'Submission uncertain';
+    isVerified = 0;
+  } else {
+    isVerified = 0;
   }
 
   const appId = crypto.randomUUID();
@@ -162,20 +180,32 @@ router.post('/report-application', authenticateEngine, (req, res) => {
     db.prepare(`
       INSERT INTO applications (
         id, user_id, portal, title, company, job_url, status, answers,
-        execution_log, verification_evidence, attempt_count, verified, submitted_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, CURRENT_TIMESTAMP)
+        execution_log, verification_evidence, attempt_count, verified,
+        created_at, prepared_at, attempted_at, submitted_at
+      ) VALUES (
+        ?, ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, 1, ?,
+        CURRENT_TIMESTAMP,
+        CASE WHEN ? = 'Application prepared' THEN CURRENT_TIMESTAMP ELSE NULL END,
+        CASE WHEN ? = 'Submission uncertain' OR ? = 'Submitted' THEN CURRENT_TIMESTAMP ELSE NULL END,
+        CASE WHEN ? = 'Submitted' THEN CURRENT_TIMESTAMP ELSE NULL END
+      )
       ON CONFLICT(user_id, portal, job_url) DO UPDATE SET
         status = excluded.status,
-        company = CASE WHEN excluded.company != '' THEN excluded.company ELSE applications.company END,
+        company = CASE WHEN excluded.company != '' AND excluded.company != 'Unknown company' THEN excluded.company ELSE applications.company END,
         answers = excluded.answers,
         execution_log = excluded.execution_log,
         verification_evidence = excluded.verification_evidence,
         attempt_count = applications.attempt_count + 1,
         verified = excluded.verified,
+        prepared_at = CASE WHEN excluded.status = 'Application prepared' THEN CURRENT_TIMESTAMP ELSE applications.prepared_at END,
+        attempted_at = CASE WHEN excluded.status = 'Submission uncertain' OR excluded.status = 'Submitted' THEN CURRENT_TIMESTAMP ELSE applications.attempted_at END,
+        submitted_at = CASE WHEN excluded.status = 'Submitted' THEN CURRENT_TIMESTAMP ELSE NULL END,
         updated_at = CURRENT_TIMESTAMP
     `).run(
       appId, userId, portal, title, normalizedCompany, normalizedUrl, finalStatus,
-      JSON.stringify(answers || {}), execution_log || '', evidenceText, isVerified
+      JSON.stringify(answers || {}), execution_log || '', evidenceText, isVerified,
+      finalStatus, finalStatus, finalStatus, finalStatus
     );
 
     db.prepare('INSERT INTO automation_logs (user_id, portal, level, message) VALUES (?, ?, "INFO", ?)').run(

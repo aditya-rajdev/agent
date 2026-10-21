@@ -273,10 +273,11 @@ async function loadDiscoveredJobs() {
 
     tbody.innerHTML = data.jobs.map(job => {
       const scoreClass = job.match_score >= 75 ? 'score-high' : job.match_score >= 50 ? 'score-medium' : 'score-low';
+      const companyName = job.company && job.company !== 'N/A' ? job.company : 'Unknown company';
       return `
         <tr>
           <td><strong>${job.title}</strong></td>
-          <td>${job.company || 'N/A'}</td>
+          <td>${companyName}</td>
           <td>${job.location || 'Remote'}</td>
           <td><span style="text-transform:capitalize; font-weight:600;">${job.portal}</span></td>
           <td><span class="score-badge ${scoreClass}">${job.match_score}%</span></td>
@@ -302,16 +303,31 @@ async function loadApplications() {
     }
 
     tbody.innerHTML = data.applications.map(app => {
-      const verifiedBadge = app.verified ? '✅ Verified' : app.status === 'Submission uncertain' ? '❓ Uncertain' : app.status === 'Application prepared' ? '📝 Prepared' : '⚠️ Pending';
-      const linkHtml = app.job_url ? `<a href="${app.job_url}" target="_blank" rel="noopener noreferrer" style="color:var(--primary); text-decoration:none; font-weight:600;">Open Listing ↗</a>` : '<span style="color:var(--text-muted)">N/A</span>';
+      // Strict Verification Badge Rules: '✅ Verified' ONLY if status === 'Submitted' AND verified === 1
+      let verifiedBadge = '⚠️ Pending';
+      if (app.status === 'Submitted' && app.verified) {
+        verifiedBadge = '✅ Verified';
+      } else if (app.status === 'Application prepared') {
+        verifiedBadge = '📝 Prepared';
+      } else if (app.status === 'Submission uncertain') {
+        verifiedBadge = '❓ Uncertain';
+      }
+
+      const companyName = app.company && app.company !== 'N/A' ? app.company : 'Unknown company';
+      const rawDate = app.submitted_at || app.prepared_at || app.created_at;
+      const displayDate = rawDate ? new Date(rawDate).toLocaleDateString() : 'N/A';
+      const linkHtml = app.job_url && app.job_url.startsWith('http')
+        ? `<a href="${app.job_url}" target="_blank" rel="noopener noreferrer" style="color:var(--primary); text-decoration:none; font-weight:600;">Open Listing ↗</a>`
+        : '<span style="color:var(--text-muted)">N/A</span>';
+
       return `
         <tr>
           <td><strong>${app.title}</strong></td>
-          <td>${app.company || 'N/A'}</td>
+          <td>${companyName}</td>
           <td><span style="text-transform:capitalize; font-weight:600;">${app.portal}</span></td>
           <td><span style="padding:4px 8px; border-radius:12px; background:var(--bg-input); font-weight:600;">${app.status}</span></td>
           <td>${verifiedBadge}</td>
-          <td>${new Date(app.submitted_at).toLocaleDateString()}</td>
+          <td>${displayDate}</td>
           <td>${linkHtml}</td>
         </tr>
       `;

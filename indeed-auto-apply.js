@@ -259,7 +259,9 @@ ${CV.email} | ${CV.phone}`;
         if (!titleOk(title)) continue;
         if (!SELECTORS.easilyApplyBadge.test(card.textContent)) continue;   // external-site jobs: skip
         if (SELECTORS.alreadyApplied.test(card.textContent.trim())) continue;
-        next = { card, link, title, jk };
+        const compEl = card.querySelector('[data-testid="company-name"], .companyName, [class*="company" i]');
+        const company = compEl ? compEl.textContent.replace(/\s+/g, ' ').trim() : '';
+        next = { card, link, title, company, jk };
         break;
       }
 
@@ -279,7 +281,7 @@ ${CV.email} | ${CV.phone}`;
 
       state.seen.push(next.jk);
       saveState();
-      log(`▶ Opening: ${next.title} | ${next.link.href}`);
+      log(`▶ Opening: ${next.title}${next.company ? ' @ ' + next.company : ''} | ${next.link.href}`);
       next.link.scrollIntoView({ block: 'center' });
       await sleep(800);
       next.link.click();                              // opens right-hand detail pane (same page)

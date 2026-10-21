@@ -404,7 +404,9 @@
       const title = link.textContent.replace(/\s+/g, ' ').trim();
       if (state[SEEN_KEY].includes(link.href)) { nSeen++; continue; }
       if (!titleOk(title)) { nFiltered++; continue; }
-      job = { href: link.href, title, card };
+      const compEl = card.querySelector('a.comp-name, .comp-name, [class*="company" i], .subTitle');
+      const company = compEl ? compEl.textContent.replace(/\s+/g, ' ').trim() : '';
+      job = { href: link.href, title, company, card };
       break;
     }
 
@@ -428,7 +430,7 @@
 
     state[SEEN_KEY].push(job.href);
     saveState();
-    log(`▶ Applying: ${job.title} | ${job.href}`);
+    log(`▶ Applying: ${job.title}${job.company ? ' @ ' + job.company : ''} | ${job.href}`);
     job.card.scrollIntoView({ block: 'center' });
 
     const ok = await applyInPopup(popup, job);

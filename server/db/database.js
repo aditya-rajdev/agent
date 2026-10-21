@@ -139,7 +139,10 @@ function initSchema() {
       verification_evidence TEXT DEFAULT '',
       attempt_count INTEGER DEFAULT 1,
       verified INTEGER DEFAULT 0,
-      submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      prepared_at DATETIME,
+      attempted_at DATETIME,
+      submitted_at DATETIME,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -166,18 +169,28 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_logs_user_date ON automation_logs(user_id, created_at);
   `);
 
-  // Perform migration for new columns if DB already exists
+  // Perform safe backward-compatible migration for new columns if DB already exists
   try {
     const appColumns = db.prepare("PRAGMA table_info(applications)").all().map(c => c.name);
     const newAppCols = [
       ['verification_evidence', "TEXT DEFAULT ''"],
-      ['attempt_count', "INTEGER DEFAULT 1"]
+      ['attempt_count', "INTEGER DEFAULT 1"],
+      ['created_at', "DATETIME"],
+      ['prepared_at', "DATETIME"],
+      ['attempted_at', "DATETIME"]
     ];
     newAppCols.forEach(([colName, colDef]) => {
       if (!appColumns.includes(colName)) {
         db.exec(`ALTER TABLE applications ADD COLUMN ${colName} ${colDef}`);
       }
     });
+
+    // Migrate existing rows: ensure created_at is populated and submitted_at is NULL for unconfirmed applications
+    db.exec(`
+      UPDATE applications SET created_at = COALESCE(created_at, submitted_at, CURRENT_TIMESTAMP) WHERE created_at IS NULL;
+      UPDATE applications SET prepared_at = COALESCE(prepared_at, submitted_at, CURRENT_TIMESTAMP) WHERE prepared_at IS NULL AND (status = 'Application prepared' OR status = 'Ready to apply');
+      UPDATE applications SET submitted_at = NULL WHERE status != 'Submitted';
+    `);
   } catch (e) {
     console.warn('Applications table migration warning:', e.message);
   }
