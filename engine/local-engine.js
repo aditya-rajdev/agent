@@ -14,6 +14,10 @@ const { applyExternal } = require('../external-apply');
 const NaukriAdapter = require('./adapters/naukriAdapter');
 const WellfoundAdapter = require('./adapters/wellfoundAdapter');
 const IndeedAdapter = require('./adapters/indeedAdapter');
+const LinkedInAdapter = require('./adapters/linkedinAdapter');
+const UpstoxAdapter = require('./adapters/upstoxAdapter');
+const UnstopAdapter = require('./adapters/unstopAdapter');
+const InternshalaAdapter = require('./adapters/internshalaAdapter');
 
 const DASHBOARD_URL = process.env.DASHBOARD_URL || 'http://localhost:3000';
 const ENGINE_API_KEY = process.env.ENGINE_API_KEY || '';
@@ -237,7 +241,7 @@ async function runAutomationCycle() {
     automationState = 'Running';
     log(`Sync OK for User: ${user.name} (${user.email}) | Mode: ${automationSettings.dry_run ? 'DRY RUN' : 'LIVE SUBMISSION'}`);
 
-    const enabledPortals = automationSettings.enabled_portals || ['naukri', 'wellfound', 'indeed'];
+    const enabledPortals = automationSettings.enabled_portals || ['naukri', 'wellfound', 'indeed', 'linkedin', 'upstox', 'unstop', 'internshala'];
 
     for (const portalName of enabledPortals) {
       if (signal.aborted || automationState !== 'Running') break;
@@ -246,6 +250,10 @@ async function runAutomationCycle() {
       if (portalName === 'naukri') adapter = new NaukriAdapter(config);
       if (portalName === 'wellfound') adapter = new WellfoundAdapter(config);
       if (portalName === 'indeed') adapter = new IndeedAdapter(config);
+      if (portalName === 'linkedin') adapter = new LinkedInAdapter(config);
+      if (portalName === 'upstox') adapter = new UpstoxAdapter(config);
+      if (portalName === 'unstop') adapter = new UnstopAdapter(config);
+      if (portalName === 'internshala') adapter = new InternshalaAdapter(config);
 
       if (!adapter) continue;
 

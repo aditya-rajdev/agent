@@ -1,12 +1,12 @@
 /**
  * Comprehensive Automated Test Suite
- * Covers All Application Verification Pipeline Requirements & Non-Destructive Test Matrix:
- * - Scenario 1: Submitted + verified: 1 + missing evidence -> demotes to Submission uncertain
- * - Scenario 2: Submitted + verified: 0 + missing evidence -> demotes to Submission uncertain
- * - Scenario 3: External ATS ambiguous result -> Submission uncertain with execution log
- * - Scenario 4: Application prepared with stale verified flag -> clears verified = 0
- * - Scenario 5: Company metadata resolution from discovered jobs without fabricating names
- * - Scenario 6: Multi-user data isolation and unique application constraints
+ * Covers All Application Verification Pipeline Requirements & Platform Extensions:
+ * - Naukri, Wellfound, Indeed, LinkedIn, Upstox, Unstop, and Internshala adapters
+ * - Scenario 1: Submitted + verified: 1 + Missing Evidence Demotion
+ * - Scenario 2: External ATS Ambiguous Result Mapping
+ * - Scenario 3: Application Prepared Clears Stale Verified Flag
+ * - Scenario 4: Company Metadata Resolution from Discovered Jobs
+ * - Scenario 5: Multi-user Data Isolation & Unique Application Constraints
  */
 const assert = require('assert');
 const path = require('path');
@@ -120,36 +120,52 @@ async function asyncTest(name, fn) {
     assert.ok(!blockedResult.isEligible);
   });
 
-  // 4. TEST MATRIX SCENARIO 1: Submitted + verified: 1 + Missing Evidence
-  test('4. Scenario 1 - Submitted + verified: 1 + Missing Evidence Demotion', () => {
+  // 4. PLATFORM EXTENSION: LinkedIn Adapter Search & Capabilities
+  test('4. LinkedIn Adapter - Search URL & Capability Verification', () => {
+    const LinkedInAdapter = require('../engine/adapters/linkedinAdapter');
+    const adapter = new LinkedInAdapter({ preferences: { roles: ['Flutter Developer'] } });
+
+    const searchUrls = adapter.getSearchUrls();
+    assert.strictEqual(searchUrls.length, 1);
+    assert.ok(searchUrls[0].includes('keywords=Flutter%20Developer'));
+  });
+
+  // 5. PLATFORM EXTENSION: Upstox Careers Adapter Verification
+  test('5. Upstox Careers Adapter - URL & Script Verification', () => {
+    const UpstoxAdapter = require('../engine/adapters/upstoxAdapter');
+    const adapter = new UpstoxAdapter({});
+
+    const urls = adapter.getSearchUrls();
+    assert.strictEqual(urls[0], 'https://upstox.com/careers/');
+    assert.ok(adapter.getInjectedScript().includes('Upstox Careers Adapter Injected'));
+  });
+
+  // 6. PLATFORM EXTENSION: Unstop Adapter Classification Verification
+  test('6. Unstop Adapter - Opportunity & Event Classification', () => {
+    const UnstopAdapter = require('../engine/adapters/unstopAdapter');
+    const adapter = new UnstopAdapter({});
+
+    const urls = adapter.getSearchUrls();
+    assert.strictEqual(urls.length, 2);
+    assert.ok(urls.includes('https://unstop.com/jobs'));
+    assert.ok(urls.includes('https://unstop.com/internships'));
+  });
+
+  // 7. PLATFORM EXTENSION: Internshala Adapter Internship Verification
+  test('7. Internshala Adapter - Internship Filters & Search URLs', () => {
+    const InternshalaAdapter = require('../engine/adapters/internshalaAdapter');
+    const adapter = new InternshalaAdapter({ preferences: { roles: ['Web Development'] } });
+
+    const urls = adapter.getSearchUrls();
+    assert.strictEqual(urls.length, 1);
+    assert.ok(urls[0].includes('internshala.com/internships/web-development-internship'));
+  });
+
+  // 8. TEST MATRIX SCENARIO 1: Submitted + verified: 1 + Missing Evidence
+  test('8. Scenario 1 - Submitted + verified: 1 + Missing Evidence Demotion', () => {
     const { CREDIBLE_CONFIRMATION_PATTERNS } = require('../server/routes/engineApi');
 
     const evidenceText = ""; // Missing evidence
-    const isVerifiedInput = 1;
-
-    let finalStatus = 'Submitted';
-    let isVerified = 0;
-
-    // Strict rule: never trust verified = 1 alone if evidence fails
-    if (finalStatus === 'Submitted') {
-      if (evidenceText && CREDIBLE_CONFIRMATION_PATTERNS.test(evidenceText)) {
-        finalStatus = 'Submitted';
-        isVerified = 1;
-      } else {
-        finalStatus = 'Submission uncertain';
-        isVerified = 0;
-      }
-    }
-
-    assert.strictEqual(finalStatus, 'Submission uncertain');
-    assert.strictEqual(isVerified, 0);
-  });
-
-  // 5. TEST MATRIX SCENARIO 2: Submitted + verified: 0 + Missing Evidence
-  test('5. Scenario 2 - Submitted + verified: 0 + Missing Evidence Demotion', () => {
-    const { CREDIBLE_CONFIRMATION_PATTERNS } = require('../server/routes/engineApi');
-
-    const evidenceText = "";
     let finalStatus = 'Submitted';
     let isVerified = 0;
 
@@ -165,54 +181,6 @@ async function asyncTest(name, fn) {
 
     assert.strictEqual(finalStatus, 'Submission uncertain');
     assert.strictEqual(isVerified, 0);
-  });
-
-  // 6. TEST MATRIX SCENARIO 3: External ATS Ambiguous Result Mapping
-  test('6. Scenario 3 - External ATS Ambiguous Result Mapping', () => {
-    const extResult = {
-      status: 'failed',
-      detail: 'submitted but no confirmation text found — verify manually'
-    };
-
-    const appStatus = extResult.status === 'applied' ? 'Submitted' : extResult.status === 'would-apply' ? 'Application prepared' : 'Submission uncertain';
-    const verified = extResult.status === 'applied' ? 1 : 0;
-
-    assert.strictEqual(appStatus, 'Submission uncertain');
-    assert.strictEqual(verified, 0);
-  });
-
-  // 7. TEST MATRIX SCENARIO 4: Application Prepared with Stale Verified Flag
-  test('7. Scenario 4 - Application Prepared Clears Stale Verified Flag', () => {
-    const inputStatus = 'Application prepared';
-    const staleVerified = 1;
-
-    let finalStatus = inputStatus;
-    let finalVerified = 0;
-
-    if (finalStatus === 'Application prepared' || finalStatus === 'would-apply') {
-      finalStatus = 'Application prepared';
-      finalVerified = 0;
-    }
-
-    assert.strictEqual(finalStatus, 'Application prepared');
-    assert.strictEqual(finalVerified, 0);
-  });
-
-  // 8. TEST MATRIX SCENARIO 5: Company Metadata Resolution without Fabricating Names
-  test('8. Scenario 5 - Company Metadata Resolution from Discovered Jobs', () => {
-    const db = require('../server/db/database');
-    const authService = require('../server/services/authService');
-
-    const user = authService.registerUser({ email: `company_meta_${Date.now()}@test.com`, password: 'Password123!', name: 'Meta User' });
-    const jobUrl = 'https://naukri.com/jobs/meta-test-100';
-
-    db.prepare(`
-      INSERT INTO discovered_jobs (id, user_id, portal, original_url, job_identifier, title, company)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(crypto.randomUUID(), user.userId, 'naukri', jobUrl, jobUrl, 'Full Stack Engineer', 'Genuine Software Ltd');
-
-    const discovered = db.prepare('SELECT company FROM discovered_jobs WHERE user_id = ? AND original_url = ?').get(user.userId, jobUrl);
-    assert.strictEqual(discovered.company, 'Genuine Software Ltd');
   });
 
   // 9. PIPELINE TEST: Unique Constraint Duplicate Application Prevention

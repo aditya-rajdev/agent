@@ -2,11 +2,11 @@
 
 A complete, production-oriented **AI Job Search & Application Automation Platform** featuring a modern **Web Dashboard** and a local **Windows Automation Engine**.
 
-The platform enables job seekers to manage their preferences, target roles, locations, salary filters, and candidate profile on a web interface. A persistent local engine running on Windows consumes those preferences, discovers matching jobs, computes 5-factor AI match scores, prepares applications, submits applications on supported portals (**Naukri**, **Wellfound**, **Indeed**, **External ATS**), and tracks status in real time.
+The platform enables job seekers to manage their preferences, target roles, locations, salary filters, and candidate profile on a web interface. A persistent local engine running on Windows consumes those preferences, discovers matching jobs, computes 5-factor AI match scores, prepares applications, submits applications on supported portals (**Naukri**, **Wellfound**, **Indeed**, **LinkedIn Jobs**, **Upstox Careers**, **Unstop**, **Internshala**, **External ATS**), and tracks status in real time.
 
 ---
 
-## 🚀 Key Features
+## 🚀 Key Features & Supported Portals
 
 1. **Web Dashboard (`http://localhost:3000`)**:
    - **Authentication & Multi-User Isolation**: Secure signup, login, JWT session management, isolated database records per user.
@@ -17,11 +17,19 @@ The platform enables job seekers to manage their preferences, target roles, loca
    - **Application Tracking Pipeline**: Complete application history tracking across pipeline stages (`Discovered`, `Saved`, `Ready to apply`, `Application prepared`, `Submitted`, `Submission uncertain`, `Failed`, `Rejected`, `Interview`, `Offer`, `Withdrawn`).
    - **Global Emergency Stop**: Instantly halts all local background automation.
 
-2. **Windows Local Engine (`engine/local-engine.js`)**:
+2. **Windows Local Engine & Multi-Portal Adapters**:
    - Persistent local daemon connecting securely to the Web Dashboard via User Engine API Keys.
    - Clean Playwright execution using standard `playwright-core` Chromium browser launcher.
    - Win32 background window management (runs Chrome off-screen or minimized without stealing user focus).
-   - Modular portal adapters for **Naukri**, **Wellfound**, **Indeed**, and **External ATS** (Greenhouse, Lever, Keka, SmartRecruiters, Freshteam).
+   - **Supported Platforms & Capability Matrix**:
+     - **Naukri.com**: Profile refresh, job feed discovery, internal 1-click & chatbot forms, external ATS handoff.
+     - **Wellfound**: Job feed & role discovery, modal form filling, relocation preference prompts.
+     - **Indeed**: "Easily Apply" search discovery & SmartApply multi-step wizard.
+     - **LinkedIn Jobs**: Search feed discovery, Easy Apply vs external redirect classification, candidate Q&A mapping.
+     - **Upstox Careers**: Scrapes official Upstox engineering/corporate openings (`https://upstox.com/careers/`), connects to Lever/Greenhouse ATS flows.
+     - **Unstop**: Job and internship discovery (`https://unstop.com/jobs`, `https://unstop.com/internships`), distinguishes jobs/internships from hackathons/challenges.
+     - **Internshala**: Internship & fresher job discovery (`https://internshala.com/internships`), stipend, duration, and screening answer mapping.
+     - **External ATS**: Greenhouse, Lever, Keka, SmartRecruiters, Freshteam. Clean skip for account-required Workday/Taleo/iCIMS.
 
 ---
 
@@ -83,7 +91,7 @@ The Web Dashboard status badge will update to **`Windows Engine: Online`** (Gree
 
 ## 🔑 How to Solve Portal Login Issues (Naukri / Wellfound / Indeed Session Management)
 
-When running automation for the first time, job portals (Naukri, Wellfound, Indeed) require a **one-time manual login** to save your session cookies inside persistent Chrome profile folders (`.naukri-apply-profile`, `.wellfound-chrome-profile`, `.indeed-chrome-profile`).
+When running automation for the first time, job portals require a **one-time manual login** to save your session cookies inside persistent Chrome profile folders (`.naukri-apply-profile`, `.wellfound-chrome-profile`, `.indeed-chrome-profile`, etc.).
 
 ### Solution 1: One-Time Login Command
 Run the login command for the portal you want to connect:
@@ -145,15 +153,15 @@ Expected Output:
 =======================================================
 
 [PASS] 1. Naukri Helpers - Headline dot cycling
-[PASS] 2. External ATS - Form Field Answer Bank & Classification
-[PASS] 3. Job Matcher - 5-Factor Relevance Engine
-[PASS] 4. Database - Schema & Constraints Verification
-[PASS] 5. Auth Service - User Registration & Token Generation
-[PASS] 6. Isolation - Per-User Data Access Control
-[PASS] 7. Engine API Bridge - Sync Config & Report Job
-[PASS] 8. Resume Parser - DOCX & PDF Parsing Service
-[PASS] 9. Automation Safety - Dry-Run Mode Safety Enforcement
-[PASS] 10. Database - Duplicate Job Unique Constraint
+[PASS] 2. External ATS Classification & Answer Bank
+[PASS] 3. Job Matcher - 5-Factor Relevance Engine & Eligibility Filters
+[PASS] 4. LinkedIn Adapter - Search URL & Capability Verification
+[PASS] 5. Upstox Careers Adapter - URL & Script Verification
+[PASS] 6. Unstop Adapter - Opportunity & Event Classification
+[PASS] 7. Internshala Adapter - Internship Filters & Search URLs
+[PASS] 8. Scenario 1 - Submitted + verified: 1 + Missing Evidence Demotion
+[PASS] 9. Pipeline - Unique Job URL Constraint Prevention
+[PASS] 10. Isolation - Multi-User Data Isolation
 
 =======================================================
 📊 Test Results: 10/10 Passed.
@@ -177,7 +185,7 @@ Expected Output:
 │   └── services/               # Auth, Resume Parser, 5-Factor Job Matcher
 ├── engine/                     # Windows Local Automation Engine
 │   ├── local-engine.js         # Persistent Windows Local Engine Daemon
-│   └── adapters/               # Portal Adapters (Naukri, Wellfound, Indeed, LinkedIn, Internshala, Glassdoor, External ATS)
+│   └── adapters/               # Portal Adapters (Naukri, Wellfound, Indeed, LinkedIn, Upstox, Unstop, Internshala, External ATS)
 ├── tests/                      # Automated Test Suite
 │   └── run-all-tests.js        # Test Runner
 ├── window-utils.js             # Win32 Off-Screen Window Management (PowerShell P/Invoke)
