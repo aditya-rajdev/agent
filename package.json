@@ -1,18 +1,38 @@
 {
-  "name": "auto-apply",
-  "version": "1.0.0",
-  "main": "naukri-profile-refresh.js",
+  "name": "ai-job-automation-platform",
+  "version": "2.0.0",
+  "description": "Configurable AI Job Application Automation Platform with Web Dashboard & Local Windows Engine",
+  "main": "server/server.js",
   "scripts": {
+    "start": "node server/server.js",
+    "dashboard": "node server/server.js",
+    "engine": "node engine/local-engine.js",
     "refresh": "node naukri-profile-refresh.js",
-    "login": "node naukri-profile-refresh.js login"
+    "login": "node naukri-profile-refresh.js login",
+    "test": "node tests/run-all-tests.js"
   },
-  "keywords": ["naukri", "playwright", "automation"],
-  "author": "Ankit Baghel",
+  "keywords": [
+    "job-automation",
+    "naukri",
+    "wellfound",
+    "indeed",
+    "ai-matching",
+    "playwright"
+  ],
+  "author": "AI Engineering Team",
   "license": "ISC",
-  "description": "Keeps your Naukri profile recently-updated by toggling the resume headline on a schedule",
   "dependencies": {
-    "playwright-core": "^1.61.1",
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.8.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "pdf-parse": "^1.1.1",
+    "playwright-core": "^1.50.1",
     "playwright-extra": "^4.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "ws": "^8.18.0"
   }
 }

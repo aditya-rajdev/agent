@@ -14,15 +14,18 @@ apply-state-*.json
 # resume / personal docs
 *.pdf
 
-# machine-specific launchers (contain absolute local paths)
+# database & file uploads
+data/
+uploads/
+
+# machine-specific launchers
 *.vbs
-.gitignore
-# local tooling / scratch
-.claude/
-naukri_update/
 
 # deps
 node_modules/
 
-# runtime flag: pauses automatic window hiding (created by show-windows.js)
+# runtime flag
 .show-windows
+
+# IDE
+.idea/

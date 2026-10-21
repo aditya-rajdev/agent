@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JobPilot AI — Configurable AI Job Automation Platform</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Top Header -->
+  <header>
+    <div class="logo-brand">
+      <span>🚀 JobPilot AI</span>
+    </div>
+
+    <div id="engineStatusBadge" class="engine-status">
+      <span class="status-indicator offline" id="statusDot"></span>
+      <span id="statusText">Windows Engine: Offline</span>
+    </div>
+
+    <div class="header-actions">
+      <button class="btn-danger" id="emergencyStopBtn">🚨 Emergency Stop</button>
+      <span id="userInfo" style="font-size:0.9rem; color:var(--text-muted);">Guest</span>
+      <button class="btn-primary" id="authBtn">Login</button>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <nav class="main-tabs">
+    <button class="tab-btn active" data-tab="tab-overview">Dashboard</button>
+    <button class="tab-btn" data-tab="tab-preferences">Job Preferences</button>
+    <button class="tab-btn" data-tab="tab-profile">Candidate Profile</button>
+    <button class="tab-btn" data-tab="tab-automation">Automation Settings</button>
+    <button class="tab-btn" data-tab="tab-jobs">Discovered Jobs</button>
+    <button class="tab-btn" data-tab="tab-applications">Applications Pipeline</button>
+  </nav>
+
+  <!-- Main Container -->
+  <main class="container">
+
+    <!-- Tab 1: Dashboard Overview -->
+    <section id="tab-overview" class="tab-content active">
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <h3>Jobs Discovered</h3>
+          <div class="value" id="metricDiscovered">0</div>
+        </div>
+        <div class="metric-card">
+          <h3>High Match Jobs</h3>
+          <div class="value" id="metricMatched">0</div>
+        </div>
+        <div class="metric-card">
+          <h3>Submitted Applications</h3>
+          <div class="value" id="metricSubmitted">0</div>
+        </div>
+        <div class="metric-card">
+          <h3>Interviews & Offers</h3>
+          <div class="value" id="metricInterviews">0 / 0</div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h2>⚡ Windows Local Engine Key & Connection Setup</h2>
+        <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:12px;">
+          To enable automated background execution on your Windows 10/11 PC, copy your Engine API Key below and run <code>npm run engine</code> in your local terminal.
+        </p>
+        <div class="form-group">
+          <label>Your Engine API Key:</label>
+          <input type="text" class="form-control" id="apiKeyDisplay" readonly value="Login to view API key">
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 2: Job Preferences -->
+    <section id="tab-preferences" class="tab-content">
+      <form id="preferencesForm">
+        <div class="form-section">
+          <h2>🎯 Target Job Roles & Categories</h2>
+          <div class="form-group">
+            <label>Select Preferred Roles (Comma-separated or check boxes):</label>
+            <input type="text" class="form-control" id="prefRoles" placeholder="Flutter Developer, Android Developer, React Native Developer, Full Stack Developer, AI/ML Engineer">
+          </div>
+          <div class="form-group">
+            <label>Job Types:</label>
+            <div class="checkbox-group">
+              <label class="checkbox-label"><input type="checkbox" name="jobType" value="Full-time" checked> Full-time</label>
+              <label class="checkbox-label"><input type="checkbox" name="jobType" value="Internship" checked> Internship / Remote Internship</label>
+              <label class="checkbox-label"><input type="checkbox" name="jobType" value="Fresher" checked> Fresher Jobs</label>
+              <label class="checkbox-label"><input type="checkbox" name="jobType" value="Part-time"> Part-time</label>
+              <label class="checkbox-label"><input type="checkbox" name="jobType" value="Contract"> Contract / Freelance</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h2>📍 Location & Work Arrangement</h2>
+          <div class="form-group">
+            <label>Target Locations (Comma-separated):</label>
+            <input type="text" class="form-control" id="prefLocations" placeholder="Remote, Remote Worldwide, Remote India, Bengaluru, Mumbai, Delhi NCR">
+          </div>
+          <div class="form-group">
+            <label>Excluded Companies & Blocklist (Comma-separated):</label>
+            <input type="text" class="form-control" id="prefExcludedCompanies" placeholder="Staffing Agency X, Unwanted Startup Y">
+          </div>
+          <div class="form-group">
+            <label>Excluded Job Title Keywords:</label>
+            <input type="text" class="form-control" id="prefExcludedKeywords" placeholder="Senior, Manager, Lead, Director, Principal, DevOps">
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h2>⚙️ Match Thresholds & Daily Limits</h2>
+          <div class="form-group">
+            <label>Minimum AI Match Score (%):</label>
+            <input type="number" class="form-control" id="prefMinMatchScore" value="60" min="0" max="100">
+          </div>
+          <div class="form-group">
+            <label>Max Applications Per Day:</label>
+            <input type="number" class="form-control" id="prefMaxDaily" value="30" min="1" max="100">
+          </div>
+          <button type="submit" class="btn-primary">💾 Save Job Preferences</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Tab 3: Candidate Profile & Resume -->
+    <section id="tab-profile" class="tab-content">
+      <div class="form-section">
+        <h2>📄 Resume Manager</h2>
+        <div class="form-group">
+          <label>Upload Primary Resume (PDF / DOCX):</label>
+          <input type="file" id="resumeFileInput" accept=".pdf,.docx" class="form-control">
+          <button type="button" id="uploadResumeBtn" class="btn-primary" style="margin-top:10px;">⬆️ Upload Resume</button>
+        </div>
+        <div id="uploadedResumesList" style="margin-top:16px;"></div>
+      </div>
+
+      <form id="profileForm">
+        <div class="form-section">
+          <h2>👤 Candidate Identity & Qualifications</h2>
+          <div class="form-group">
+            <label>Current Role / Headline:</label>
+            <input type="text" class="form-control" id="profCurrentRole" placeholder="Full Stack Developer (React & Node.js)">
+          </div>
+          <div class="form-group">
+            <label>Education & Graduation:</label>
+            <input type="text" class="form-control" id="profEducation" placeholder="B.Tech Computer Science, 2025">
+          </div>
+          <div class="form-group">
+            <label>Years of Experience:</label>
+            <input type="text" class="form-control" id="profYearsExp" placeholder="1 year professional + internships">
+          </div>
+          <div class="form-group">
+            <label>Technical Skills (Comma-separated):</label>
+            <input type="text" class="form-control" id="profSkills" placeholder="JavaScript, TypeScript, Python, React, Node.js, PostgreSQL, Docker">
+          </div>
+          <div class="form-group">
+            <label>Notice Period / Availability:</label>
+            <input type="text" class="form-control" id="profNoticePeriod" value="30 days">
+          </div>
+          <div class="form-group">
+            <label>Current CTC / Expected CTC (in LPA):</label>
+            <div style="display:flex; gap:12px;">
+              <input type="text" class="form-control" id="profCurrentCTC" placeholder="Current CTC (e.g. 6)">
+              <input type="text" class="form-control" id="profExpectedCTC" placeholder="Expected CTC (e.g. 12)">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>LinkedIn / GitHub / Portfolio Links:</label>
+            <input type="text" class="form-control" id="profLinkedin" placeholder="LinkedIn URL" style="margin-bottom:8px;">
+            <input type="text" class="form-control" id="profGithub" placeholder="GitHub URL" style="margin-bottom:8px;">
+            <input type="text" class="form-control" id="profPortfolio" placeholder="Portfolio Website URL">
+          </div>
+          <button type="submit" class="btn-primary">💾 Save Profile Details</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Tab 4: Automation Settings -->
+    <section id="tab-automation" class="tab-content">
+      <form id="automationForm">
+        <div class="form-section">
+          <h2>🤖 Automation Execution Control</h2>
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="autoEnabled" checked> Enable Local Automation Scheduler
+            </label>
+          </div>
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="autoDryRun" checked> <strong>DRY RUN MODE</strong> (Fills application forms but requires manual confirmation before submit)
+            </label>
+          </div>
+          <div class="form-group">
+            <label>Supported Portals:</label>
+            <div class="checkbox-group">
+              <label class="checkbox-label"><input type="checkbox" name="portal" value="naukri" checked> Naukri.com</label>
+              <label class="checkbox-label"><input type="checkbox" name="portal" value="wellfound" checked> Wellfound (AngelList)</label>
+              <label class="checkbox-label"><input type="checkbox" name="portal" value="indeed" checked> Indeed</label>
+            </div>
+          </div>
+          <button type="submit" class="btn-primary">💾 Save Automation Settings</button>
+        </div>
+      </form>
+
+      <div class="form-section">
+        <h2>🖥️ Live Automation Console</h2>
+        <div class="log-console" id="logConsole">
+          [System] Local engine console initialized. Awaiting scheduled execution...
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 5: Discovered Jobs -->
+    <section id="tab-jobs" class="tab-content">
+      <div class="form-section">
+        <h2>🔍 Discovered Jobs & AI Match Scores</h2>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Job Title</th>
+                <th>Company</th>
+                <th>Location</th>
+                <th>Portal</th>
+                <th>AI Match Score</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="jobsTableBody">
+              <tr><td colspan="7" style="text-align:center;">Loading discovered jobs...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 6: Applications Pipeline -->
+    <section id="tab-applications" class="tab-content">
+      <div class="form-section">
+        <h2>📋 Application History Pipeline</h2>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Role</th>
+                <th>Company</th>
+                <th>Portal</th>
+                <th>Status</th>
+                <th>Verified</th>
+                <th>Submitted Date</th>
+              </tr>
+            </thead>
+            <tbody id="applicationsTableBody">
+              <tr><td colspan="6" style="text-align:center;">Loading applications...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Authentication Modal -->
+  <div class="modal-overlay" id="authModal" style="display:none;">
+    <div class="modal-card">
+      <h2 id="modalTitle" style="margin-bottom:16px;">Sign In to JobPilot AI</h2>
+      <form id="authForm">
+        <div class="form-group" id="nameGroup" style="display:none;">
+          <label>Full Name:</label>
+          <input type="text" class="form-control" id="authName">
+        </div>
+        <div class="form-group">
+          <label>Email Address:</label>
+          <input type="email" class="form-control" id="authEmail" required>
+        </div>
+        <div class="form-group">
+          <label>Password:</label>
+          <input type="password" class="form-control" id="authPassword" required>
+        </div>
+        <button type="submit" class="btn-primary" style="width:100%; margin-top:12px;" id="authSubmitBtn">Login</button>
+        <p style="text-align:center; margin-top:16px; font-size:0.9rem; color:var(--text-muted);">
+          <span id="authToggleText">Need an account?</span> <a href="#" id="authToggleLink" style="color:var(--primary);">Register</a>
+        </p>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
