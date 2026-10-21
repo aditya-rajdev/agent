@@ -63,6 +63,91 @@ async function sendHeartbeat() {
   } catch (e) {}
 }
 
+async function reportDiscoveredJob(portal, jobData) {
+  if (!ENGINE_API_KEY) return;
+  try {
+    await fetch(`${DASHBOARD_URL}/api/engine/report-job`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Engine-API-Key': ENGINE_API_KEY
+      },
+      body: JSON.stringify({
+        portal,
+        original_url: jobData.link || jobData.href || `https://${portal}.com/job/${Date.now()}`,
+        job_identifier: jobData.link || jobData.title,
+        title: jobData.title,
+        company: jobData.company || '',
+        location: jobData.location || 'Remote',
+        salary: jobData.salary || '',
+        description: jobData.title + ' position'
+      })
+    });
+    log(`Reported Discovered Job: "${jobData.title}" at "${jobData.company || 'Company'}"`);
+  } catch (err) {
+    log(`Report Job Error: ${err.message}`);
+  }
+}
+
+async function reportApplicationResult(portal, appData) {
+  if (!ENGINE_API_KEY) return;
+  try {
+    await fetch(`${DASHBOARD_URL}/api/engine/report-application`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Engine-API-Key': ENGINE_API_KEY
+      },
+      body: JSON.stringify({
+        portal,
+        title: appData.title,
+        company: appData.company || '',
+        job_url: appData.link || '',
+        status: appData.status || 'Submitted',
+        verified: appData.verified || 1
+      })
+    });
+    log(`Reported Application (${appData.status}): "${appData.title}"`);
+  } catch (err) {
+    log(`Report Application Error: ${err.message}`);
+  }
+}
+
+function setupConsoleListener(page, portalName) {
+  page.on('console', (msg) => {
+    const text = msg.text();
+    if (!/auto-apply/.test(text)) return;
+    const clean = text.replace(/%c\[auto-apply\]\s*\S*/, '').trim();
+    log(`  [${portalName}] ${clean.slice(0, 160)}`);
+
+    // Parse discovered job lines: "▶ Applying: <title> | <href>" or "▶ Opening: <title>"
+    const m = clean.match(/▶ (?:Applying|Opening)[^:]*: (.+)/);
+    if (m) {
+      const [main, link, cardSalary] = m[1].split(' | ');
+      const atParts = main.split(' @ ');
+      const company = atParts.length > 1 ? atParts.pop() : '';
+      const title = atParts.join(' @ ');
+
+      reportDiscoveredJob(portalName, {
+        title: title.trim(),
+        company: (company || '').replace(/^\?$/, '').trim(),
+        link: (link || '').trim(),
+        salary: (cardSalary || '').trim()
+      });
+    }
+
+    // Parse application submission confirmation lines
+    if (/✅ applied|application sent|application submitted/i.test(clean)) {
+      const titlem = clean.match(/(?:applied|submitted|sent)[^:]*:?\s*(.+)/i);
+      reportApplicationResult(portalName, {
+        title: titlem ? titlem[1].trim() : 'Applied Role',
+        status: 'Submitted',
+        verified: 1
+      });
+    }
+  });
+}
+
 async function runAutomationCycle() {
   if (isRunning) return;
   isRunning = true;
@@ -113,7 +198,10 @@ async function runAutomationCycle() {
         // Hide browser window on Windows
         setTimeout(() => hideBrowserWindows(profileDir).catch(() => {}), 1500);
 
+        ctx.on('page', (p) => setupConsoleListener(p, portalName));
+
         const page = ctx.pages()[0] || (await ctx.newPage());
+        setupConsoleListener(page, portalName);
 
         for (const url of searchUrls) {
           log(`Navigating to search feed: ${url}`);
@@ -153,6 +241,6 @@ log('=======================================================');
 sendHeartbeat();
 setInterval(sendHeartbeat, 30000); // Heartbeat every 30 seconds
 
-// Run initial cycle after 5 seconds, then every 30 minutes
-setTimeout(runAutomationCycle, 5000);
+// Run initial cycle after 2 seconds, then every 30 minutes
+setTimeout(runAutomationCycle, 2000);
 setInterval(runAutomationCycle, 30 * 60 * 1000);
