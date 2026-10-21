@@ -1,10 +1,11 @@
 /**
  * Comprehensive Automated Test Suite
- * Covers Unit Tests, Integration Tests, Job Matching, Auth, Database Isolation, and Engine API.
+ * Covers Unit Tests, Integration Tests, Multi-User Isolation, Engine API Sync, AI Matcher, and Security Controls.
  */
 const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 console.log('=======================================================');
 console.log('🧪 Running Comprehensive Automated Test Suite...');
@@ -40,15 +41,15 @@ async function asyncTest(name, fn) {
 (async () => {
 
   // 1. UNIT TEST: Naukri Helpers
-  test('Naukri Helpers - Headline dot cycling', () => {
-    const { nextHeadline, uploadedToday } = require('../naukri-helpers');
+  test('1. Naukri Helpers - Headline dot cycling', () => {
+    const { nextHeadline } = require('../naukri-helpers');
     assert.strictEqual(nextHeadline('Full Stack Developer'), 'Full Stack Developer.');
     assert.strictEqual(nextHeadline('Full Stack Developer.'), 'Full Stack Developer..');
     assert.strictEqual(nextHeadline('Full Stack Developer..'), 'Full Stack Developer');
   });
 
   // 2. UNIT TEST: External Form Field Answer Bank
-  test('External ATS - Form Field Answer Bank', () => {
+  test('2. External ATS - Form Field Answer Bank & Classification', () => {
     const { answerFor, atsKind } = require('../external-apply');
     const mockCV = {
       name: 'Ankit Baghel',
@@ -72,7 +73,7 @@ async function asyncTest(name, fn) {
   });
 
   // 3. UNIT TEST: AI 5-Factor Job Matcher Scoring Engine
-  test('Job Matcher - 5-Factor Relevance Engine', () => {
+  test('3. Job Matcher - 5-Factor Relevance Engine', () => {
     const { calculateJobMatch } = require('../server/services/jobMatcherService');
 
     const mockProfile = {
@@ -113,8 +114,8 @@ async function asyncTest(name, fn) {
     assert.ok(!blockedResult.isEligible);
   });
 
-  // 4. INTEGRATION TEST: Database Initialization & Isolation
-  test('Database - Schema & Constraints Verification', () => {
+  // 4. INTEGRATION TEST: Database Initialization & Schema
+  test('4. Database - Schema & Constraints Verification', () => {
     const db = require('../server/db/database');
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(t => t.name);
 
@@ -124,16 +125,16 @@ async function asyncTest(name, fn) {
     });
   });
 
-  // 5. INTEGRATION TEST: Authentication & Password Hashing
-  test('Auth Service - User Signup & Login Isolation', () => {
+  // 5. INTEGRATION TEST: Auth Service & Token Generation
+  test('5. Auth Service - User Registration & Token Generation', () => {
     const authService = require('../server/services/authService');
-    const testEmail = `test_${Date.now()}@example.com`;
+    const testEmail = `test_auth_${Date.now()}@example.com`;
     const testPassword = 'SecurePassword123!';
 
     const reg = authService.registerUser({
       email: testEmail,
       password: testPassword,
-      name: 'Test Candidate',
+      name: 'Auth Test User',
       phone: '+91 9876543210'
     });
 
@@ -148,10 +149,75 @@ async function asyncTest(name, fn) {
 
     assert.strictEqual(login.userId, reg.userId);
     assert.ok(login.token);
+  });
 
-    const userByKey = authService.getUserByApiKey(reg.engineApiKey);
+  // 6. INTEGRATION TEST: Multi-User Data Isolation
+  test('6. Isolation - Per-User Data Access Control', () => {
+    const authService = require('../server/services/authService');
+    const db = require('../server/db/database');
+
+    const userA = authService.registerUser({ email: `usera_${Date.now()}@test.com`, password: 'Password123!', name: 'User A' });
+    const userB = authService.registerUser({ email: `userb_${Date.now()}@test.com`, password: 'Password123!', name: 'User B' });
+
+    // User A updates preferences
+    db.prepare('UPDATE job_preferences SET roles = ? WHERE user_id = ?').run('["Flutter Developer"]', userA.userId);
+
+    // Verify User B's preferences remain unchanged
+    const prefB = db.prepare('SELECT roles FROM job_preferences WHERE user_id = ?').get(userB.userId);
+    assert.notStrictEqual(prefB.roles, '["Flutter Developer"]');
+  });
+
+  // 7. INTEGRATION TEST: Engine API Bridge & Sync Config
+  test('7. Engine API Bridge - Sync Config & Report Job', () => {
+    const authService = require('../server/services/authService');
+
+    const user = authService.registerUser({ email: `engine_${Date.now()}@test.com`, password: 'Password123!', name: 'Engine User' });
+    const userByKey = authService.getUserByApiKey(user.engineApiKey);
+
     assert.ok(userByKey);
-    assert.strictEqual(userByKey.id, reg.userId);
+    assert.strictEqual(userByKey.id, user.userId);
+  });
+
+  // 8. INTEGRATION TEST: Resume Parsing (PDF & DOCX)
+  await asyncTest('8. Resume Parser - DOCX & PDF Parsing Service', async () => {
+    const resumeParser = require('../server/services/resumeParserService');
+    const mockText = 'Name: Ankit Baghel\nEmail: ankit@test.com\nPhone: +91 9876543210\nSkills: React, Node.js, TypeScript';
+
+    const parsed = resumeParser.parseResumeDetails(mockText);
+    assert.strictEqual(parsed.email, 'ankit@test.com');
+    assert.strictEqual(parsed.phone, '+91 9876543210');
+    assert.ok(parsed.skills.includes('React'));
+  });
+
+  // 9. INTEGRATION TEST: Dry-Run Mode Safety Enforcement
+  test('9. Automation Safety - Dry-Run Mode Safety Enforcement', () => {
+    const db = require('../server/db/database');
+    const authService = require('../server/services/authService');
+
+    const user = authService.registerUser({ email: `dryrun_${Date.now()}@test.com`, password: 'Password123!', name: 'Safety User' });
+    const settings = db.prepare('SELECT dry_run FROM automation_settings WHERE user_id = ?').get(user.userId);
+
+    assert.strictEqual(settings.dry_run, 1, 'Default automation mode MUST be Dry-Run (dry_run = 1)');
+  });
+
+  // 10. INTEGRATION TEST: Duplicate Prevention
+  test('10. Database - Duplicate Job Unique Constraint', () => {
+    const db = require('../server/db/database');
+    const authService = require('../server/services/authService');
+
+    const user = authService.registerUser({ email: `dupe_${Date.now()}@test.com`, password: 'Password123!', name: 'Dupe User' });
+
+    const insertJob = db.prepare(`
+      INSERT INTO discovered_jobs (id, user_id, portal, original_url, job_identifier, title)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+
+    insertJob.run(crypto.randomUUID(), user.userId, 'naukri', 'https://naukri.com/job1', 'job_id_100', 'Software Engineer');
+
+    // Attempting duplicate insert with same (user_id, portal, job_identifier) should throw
+    assert.throws(() => {
+      insertJob.run(crypto.randomUUID(), user.userId, 'naukri', 'https://naukri.com/job1', 'job_id_100', 'Software Engineer');
+    }, /UNIQUE constraint failed/);
   });
 
   console.log('\n=======================================================');

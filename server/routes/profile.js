@@ -89,12 +89,21 @@ router.post('/resumes', authenticate, upload.single('resume'), async (req, res) 
     let parsedText = '';
     let extractedData = {};
 
-    if (req.file.filename.toLowerCase().endsWith('.pdf')) {
+    const fileExt = path.extname(req.file.originalname).toLowerCase();
+
+    if (fileExt === '.pdf') {
       try {
         parsedText = await resumeParser.extractTextFromPDF(req.file.path);
         extractedData = resumeParser.parseResumeDetails(parsedText);
       } catch (e) {
         console.warn('PDF parsing warning:', e.message);
+      }
+    } else if (fileExt === '.docx' || fileExt === '.doc') {
+      try {
+        parsedText = await resumeParser.extractTextFromDOCX(req.file.path);
+        extractedData = resumeParser.parseResumeDetails(parsedText);
+      } catch (e) {
+        console.warn('DOCX parsing warning:', e.message);
       }
     }
 
@@ -106,7 +115,7 @@ router.post('/resumes', authenticate, upload.single('resume'), async (req, res) 
       VALUES (?, ?, ?, ?, ?, ?, ?, 1)
     `).run(
       resumeId, req.user.userId, req.file.originalname, req.file.path,
-      path.extname(req.file.originalname).replace('.', '').toLowerCase(),
+      fileExt.replace('.', ''),
       parsedText, JSON.stringify(extractedData)
     );
 
@@ -117,6 +126,20 @@ router.post('/resumes', authenticate, upload.single('resume'), async (req, res) 
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Secure Download Endpoint with Ownership Validation
+router.get('/resumes/download/:id', authenticate, (req, res) => {
+  const resume = db.prepare('SELECT * FROM resumes WHERE id = ? AND user_id = ?').get(req.params.id, req.user.userId);
+  if (!resume) {
+    return res.status(404).json({ error: 'Resume not found or unauthorized.' });
+  }
+
+  if (!fs.existsSync(resume.file_path)) {
+    return res.status(404).json({ error: 'Resume file missing on server.' });
+  }
+
+  res.download(resume.file_path, resume.filename);
 });
 
 router.delete('/resumes/:id', authenticate, (req, res) => {

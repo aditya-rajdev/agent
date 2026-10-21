@@ -5,18 +5,10 @@
  */
 const path = require('path');
 const fs = require('fs');
+const { chromium } = require('playwright-core');
 require('dotenv').config();
 
 const { minimizeBrowserWindows, hideBrowserWindows } = require('../window-utils');
-
-let chromium;
-try {
-  const { addExtra } = require('playwright-extra');
-  chromium = addExtra(require('playwright-core').chromium);
-  chromium.use(require('puppeteer-extra-plugin-stealth')());
-} catch (e) {
-  ({ chromium } = require('playwright-core'));
-}
 
 const NaukriAdapter = require('./adapters/naukriAdapter');
 const WellfoundAdapter = require('./adapters/wellfoundAdapter');
@@ -114,7 +106,6 @@ async function runAutomationCycle() {
           headless: false,
           viewport: { width: 1280, height: 900 },
           args: [
-            '--disable-blink-features=AutomationControlled',
             '--window-position=-32000,-32000'
           ]
         });
