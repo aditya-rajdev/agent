@@ -4,6 +4,8 @@
  * so the field-filling path is exercised without touching a live employer site.
  */
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 const { atsKind, answerFor, SUCCESS_RE, SUBMIT_RE } = require('./external-apply');
 
 // ---- ATS classification: account-required portals must never be attempted ----
@@ -83,13 +85,19 @@ for (const t of ['Please fill all required fields', 'Application form', 'Error s
     <button type=button>Submit Application</button>
   </form></body>`;
 
+  let resumeFile = require('./config').resumePath;
+  if (!fs.existsSync(resumeFile)) {
+    resumeFile = path.join(__dirname, 'test-resume.pdf');
+    fs.writeFileSync(resumeFile, '%PDF-1.4 Fake PDF Content for Automated Testing');
+  }
+
   const browser = await chromium.launch({ channel: 'chrome' }).catch(() => null);
   if (!browser) { console.log('external-apply: pure checks passed (no Chrome, skipped browser pass)'); return; }
   const page = await browser.newPage();
   try {
     await page.setContent(form);
     const mod = require('./external-apply');
-    const res = await mod.fillFieldsForTest(page, CV, require('./config').resumePath);
+    const res = await mod.fillFieldsForTest(page, CV, resumeFile);
     const val = (sel) => page.inputValue(sel);
     assert.strictEqual(await val('#fn'), 'Ankit');
     assert.strictEqual(await val('#em'), 'a@b.com');

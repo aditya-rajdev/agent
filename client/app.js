@@ -282,7 +282,7 @@ async function loadDiscoveredJobs() {
           <td><span class="score-badge ${scoreClass}">${job.match_score}%</span></td>
           <td>${job.status}</td>
           <td>
-            <a href="${job.original_url}" target="_blank" style="color:var(--primary); text-decoration:none; font-weight:600;">View Listing ↗</a>
+            <a href="${job.original_url}" target="_blank" rel="noopener noreferrer" style="color:var(--primary); text-decoration:none; font-weight:600;">Open Listing ↗</a>
           </td>
         </tr>
       `;
@@ -297,20 +297,25 @@ async function loadApplications() {
     const tbody = document.getElementById('applicationsTableBody');
 
     if (!data.applications || data.applications.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No applications logged yet.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No applications logged yet.</td></tr>';
       return;
     }
 
-    tbody.innerHTML = data.applications.map(app => `
-      <tr>
-        <td><strong>${app.title}</strong></td>
-        <td>${app.company || 'N/A'}</td>
-        <td><span style="text-transform:capitalize; font-weight:600;">${app.portal}</span></td>
-        <td><span style="padding:4px 8px; border-radius:12px; background:var(--bg-input); font-weight:600;">${app.status}</span></td>
-        <td>${app.verified ? '✅ Verified' : '⚠️ Pending'}</td>
-        <td>${new Date(app.submitted_at).toLocaleDateString()}</td>
-      </tr>
-    `).join('');
+    tbody.innerHTML = data.applications.map(app => {
+      const verifiedBadge = app.verified ? '✅ Verified' : app.status === 'Submission uncertain' ? '❓ Uncertain' : app.status === 'Application prepared' ? '📝 Prepared' : '⚠️ Pending';
+      const linkHtml = app.job_url ? `<a href="${app.job_url}" target="_blank" rel="noopener noreferrer" style="color:var(--primary); text-decoration:none; font-weight:600;">Open Listing ↗</a>` : '<span style="color:var(--text-muted)">N/A</span>';
+      return `
+        <tr>
+          <td><strong>${app.title}</strong></td>
+          <td>${app.company || 'N/A'}</td>
+          <td><span style="text-transform:capitalize; font-weight:600;">${app.portal}</span></td>
+          <td><span style="padding:4px 8px; border-radius:12px; background:var(--bg-input); font-weight:600;">${app.status}</span></td>
+          <td>${verifiedBadge}</td>
+          <td>${new Date(app.submitted_at).toLocaleDateString()}</td>
+          <td>${linkHtml}</td>
+        </tr>
+      `;
+    }).join('');
   } catch (e) {}
 }
 

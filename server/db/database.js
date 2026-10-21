@@ -136,6 +136,8 @@ function initSchema() {
       status TEXT DEFAULT 'Ready to apply',
       answers TEXT DEFAULT '{}',
       execution_log TEXT DEFAULT '',
+      verification_evidence TEXT DEFAULT '',
+      attempt_count INTEGER DEFAULT 1,
       verified INTEGER DEFAULT 0,
       submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -159,29 +161,25 @@ function initSchema() {
 
     CREATE INDEX IF NOT EXISTS idx_jobs_user_status ON discovered_jobs(user_id, status);
     CREATE INDEX IF NOT EXISTS idx_apps_user_status ON applications(user_id, status);
+    DROP INDEX IF EXISTS idx_apps_unique;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_apps_unique_url ON applications(user_id, portal, job_url) WHERE job_url != '';
     CREATE INDEX IF NOT EXISTS idx_logs_user_date ON automation_logs(user_id, created_at);
   `);
 
   // Perform migration for new columns if DB already exists
   try {
-    const columns = db.prepare("PRAGMA table_info(profiles)").all().map(c => c.name);
-    const newCols = [
-      ['full_name', "TEXT DEFAULT ''"],
-      ['email', "TEXT DEFAULT ''"],
-      ['phone', "TEXT DEFAULT ''"],
-      ['dob', "TEXT DEFAULT ''"],
-      ['gender', "TEXT DEFAULT 'Prefer not to say'"],
-      ['graduation_year', "TEXT DEFAULT ''"],
-      ['start_date', "TEXT DEFAULT ''"],
-      ['sponsorship_req', "TEXT DEFAULT 'No'"]
+    const appColumns = db.prepare("PRAGMA table_info(applications)").all().map(c => c.name);
+    const newAppCols = [
+      ['verification_evidence', "TEXT DEFAULT ''"],
+      ['attempt_count', "INTEGER DEFAULT 1"]
     ];
-    newCols.forEach(([colName, colDef]) => {
-      if (!columns.includes(colName)) {
-        db.exec(`ALTER TABLE profiles ADD COLUMN ${colName} ${colDef}`);
+    newAppCols.forEach(([colName, colDef]) => {
+      if (!appColumns.includes(colName)) {
+        db.exec(`ALTER TABLE applications ADD COLUMN ${colName} ${colDef}`);
       }
     });
   } catch (e) {
-    console.warn('Migration warning:', e.message);
+    console.warn('Applications table migration warning:', e.message);
   }
 }
 

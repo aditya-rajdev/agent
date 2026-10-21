@@ -1,10 +1,11 @@
 /**
- * Applications Routes - Application Tracking Pipeline, Status Updates, CSV Export
+ * Applications Routes - Application Tracking Pipeline, Status Updates, Reconciliation
  */
 const express = require('express');
 const router = express.Router();
 const { authenticate } = require('./auth');
 const db = require('../db/database');
+const { CREDIBLE_CONFIRMATION_PATTERNS } = require('./engineApi');
 
 router.get('/', authenticate, (req, res) => {
   const { status, portal, limit = 50, page = 1 } = req.query;
@@ -42,7 +43,7 @@ router.get('/', authenticate, (req, res) => {
 });
 
 router.put('/:id/status', authenticate, (req, res) => {
-  const { status, execution_log, verified } = req.body;
+  const { status, execution_log, verification_evidence, verified } = req.body;
   const allowedStatuses = [
     'Discovered', 'Matched', 'Saved', 'Ready to apply',
     'Application prepared', 'Submitted', 'Submission uncertain',
@@ -55,11 +56,64 @@ router.put('/:id/status', authenticate, (req, res) => {
 
   db.prepare(`
     UPDATE applications
-    SET status = ?, execution_log = COALESCE(?, execution_log), verified = COALESCE(?, verified), updated_at = CURRENT_TIMESTAMP
+    SET status = ?,
+        execution_log = COALESCE(?, execution_log),
+        verification_evidence = COALESCE(?, verification_evidence),
+        verified = COALESCE(?, verified),
+        updated_at = CURRENT_TIMESTAMP
     WHERE id = ? AND user_id = ?
-  `).run(status, execution_log || null, verified !== undefined ? (verified ? 1 : 0) : null, req.params.id, req.user.userId);
+  `).run(status, execution_log || null, verification_evidence || null, verified !== undefined ? (verified ? 1 : 0) : null, req.params.id, req.user.userId);
 
   res.json({ message: 'Application status updated.' });
+});
+
+// Safe Reconciliation Endpoint - Reconciles Application Pipeline Statuses Based Strictly on Evidence
+router.post('/reconcile', authenticate, (req, res) => {
+  const userId = req.user.userId;
+  const applications = db.prepare('SELECT * FROM applications WHERE user_id = ?').all(userId);
+
+  let reconciledCount = 0;
+
+  const updateStmt = db.prepare(`
+    UPDATE applications
+    SET status = ?, verified = ?, company = CASE WHEN company = '' OR company = 'N/A' THEN ? ELSE company END, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ? AND user_id = ?
+  `);
+
+  applications.forEach(app => {
+    const evidence = (app.verification_evidence || app.execution_log || '').trim();
+    let newStatus = app.status;
+    let newVerified = app.verified;
+
+    // Resolve company name if empty
+    let resolvedCompany = app.company;
+    if (!resolvedCompany || resolvedCompany === '' || resolvedCompany === 'N/A') {
+      const job = db.prepare('SELECT company FROM discovered_jobs WHERE user_id = ? AND (original_url = ? OR job_identifier = ?)').get(userId, app.job_url || '', app.job_url || '');
+      if (job && job.company && job.company !== 'N/A') {
+        resolvedCompany = job.company;
+      }
+    }
+
+    if (app.status === 'Submitted') {
+      if (CREDIBLE_CONFIRMATION_PATTERNS.test(evidence) || app.verified === 1) {
+        newStatus = 'Submitted';
+        newVerified = 1;
+      } else {
+        newStatus = 'Submission uncertain';
+        newVerified = 0;
+      }
+    } else if (/dry run|would click|form filled/i.test(evidence) || app.status === 'Application prepared') {
+      newStatus = 'Application prepared';
+      newVerified = 0;
+    }
+
+    if (newStatus !== app.status || newVerified !== app.verified || resolvedCompany !== app.company) {
+      updateStmt.run(newStatus, newVerified, resolvedCompany || '', app.id, userId);
+      reconciledCount++;
+    }
+  });
+
+  res.json({ message: `Reconciled ${reconciledCount} application records based on credible evidence.`, reconciledCount });
 });
 
 module.exports = router;

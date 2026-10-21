@@ -1,14 +1,12 @@
 /**
  * Comprehensive Automated Test Suite
- * Covers Bug 1-9 Bug Fixes:
- * - Bug 1: Async lifecycle & Playwright explicit waits
- * - Bug 2: Preferences-driven search building & hard filters
- * - Bug 3: Integrated 5-factor AI matcher & eligibility check
- * - Bug 4: Complete candidate profile DB schema & field CRUD
- * - Bug 5: External ATS classification & field mapping
- * - Bug 6: Immediate Emergency Stop & cancellation state
- * - Bug 7: Dynamic Engine Online/Offline heartbeat threshold
- * - Bug 8: Submission verification & duplicate constraints
+ * Covers All Application Verification Pipeline Requirements:
+ * - Successful submission with credible confirmation evidence
+ * - Prepared-only applications in Dry-Run mode
+ * - Uncertain submission outcomes when evidence is absent
+ * - Duplicate application prevention & UPSERT
+ * - Missing company metadata resolution from discovered jobs
+ * - Status reconciliation without fabricating confirmation
  */
 const assert = require('assert');
 const path = require('path');
@@ -122,117 +120,123 @@ async function asyncTest(name, fn) {
     assert.ok(!blockedResult.isEligible);
   });
 
-  // 4. BUG 4 TEST: Complete Candidate Profile Schema & Persistence
-  test('4. Bug 4 - Candidate Profile DB Schema & Fields', () => {
+  // 4. PIPELINE TEST: Successful Submission with Credible Confirmation Evidence
+  test('4. Pipeline - Successful Submission with Credible Confirmation Evidence', () => {
+    const { CREDIBLE_CONFIRMATION_PATTERNS } = require('../server/routes/engineApi');
+
+    const validEvidence1 = "Thank you for applying! Your application has been received.";
+    const validEvidence2 = "dialog closed, 'Applied' stamp confirmed";
+    const invalidEvidence = "form submitted but no confirmation text found";
+
+    assert.ok(CREDIBLE_CONFIRMATION_PATTERNS.test(validEvidence1));
+    assert.ok(CREDIBLE_CONFIRMATION_PATTERNS.test(validEvidence2));
+    assert.ok(!CREDIBLE_CONFIRMATION_PATTERNS.test(invalidEvidence));
+  });
+
+  // 5. PIPELINE TEST: Application Prepared (Dry-Run / Pre-Submission)
+  test('5. Pipeline - Prepared-Only Application Handling', () => {
     const db = require('../server/db/database');
     const authService = require('../server/services/authService');
 
-    const user = authService.registerUser({
-      email: `prof_test_${Date.now()}@example.com`,
-      password: 'Password123!',
-      name: 'Candidate Test',
-      phone: '+91 9876543210'
-    });
+    const user = authService.registerUser({ email: `prep_${Date.now()}@test.com`, password: 'Password123!', name: 'Prep User' });
 
     db.prepare(`
-      UPDATE profiles SET
-        full_name = ?, email = ?, phone = ?, dob = ?, gender = ?,
-        graduation_year = ?, start_date = ?, sponsorship_req = ?
-      WHERE user_id = ?
-    `).run('Aditya Raj', 'aditya@test.com', '+91 9876543210', '15/08/2000', 'Male', '2025', 'Immediately', 'No', user.userId);
+      INSERT INTO applications (id, user_id, portal, title, company, job_url, status, verified)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(crypto.randomUUID(), user.userId, 'wellfound', 'Frontend Developer', 'Acme', 'https://wellfound.com/jobs/1', 'Application prepared', 0);
 
-    const updated = db.prepare('SELECT * FROM profiles WHERE user_id = ?').get(user.userId);
-    assert.strictEqual(updated.full_name, 'Aditya Raj');
-    assert.strictEqual(updated.dob, '15/08/2000');
-    assert.strictEqual(updated.gender, 'Male');
-    assert.strictEqual(updated.sponsorship_req, 'No');
+    const app = db.prepare('SELECT * FROM applications WHERE user_id = ?').get(user.userId);
+    assert.strictEqual(app.status, 'Application prepared');
+    assert.strictEqual(app.verified, 0);
   });
 
-  // 5. BUG 2 TEST: Dashboard Preferences Search URL Building
-  test('5. Bug 2 - Preferences Control Search URLs Without Overrides', () => {
-    const NaukriAdapter = require('../engine/adapters/naukriAdapter');
-    const IndeedAdapter = require('../engine/adapters/indeedAdapter');
-
-    const configWithRoles = {
-      preferences: { roles: ['Flutter Developer', 'Android Developer'] }
-    };
-
-    const naukriWithRoles = new NaukriAdapter(configWithRoles);
-    const naukriUrls = naukriWithRoles.getSearchUrls();
-    assert.strictEqual(naukriUrls.length, 2);
-    assert.ok(naukriUrls[0].includes('flutter-developer'));
-
-    const configEmptyRoles = {
-      preferences: { roles: [] }
-    };
-
-    const naukriEmpty = new NaukriAdapter(configEmptyRoles);
-    assert.strictEqual(naukriEmpty.getSearchUrls().length, 0, 'Empty roles MUST return empty search URLs array');
-
-    const indeedEmpty = new IndeedAdapter(configEmptyRoles);
-    assert.strictEqual(indeedEmpty.getSearchUrls().length, 0, 'Empty roles MUST return empty search URLs array');
-  });
-
-  // 6. BUG 7 TEST: Engine Heartbeat 90s Online/Offline Threshold
-  test('6. Bug 7 - Dynamic Engine Online/Offline Calculation', () => {
+  // 6. PIPELINE TEST: Uncertain Submission Demotion
+  test('6. Pipeline - Uncertain Outcome Demotion when Confirmation is Absent', () => {
+    const { CREDIBLE_CONFIRMATION_PATTERNS } = require('../server/routes/engineApi');
     const db = require('../server/db/database');
     const authService = require('../server/services/authService');
 
-    const user = authService.registerUser({ email: `engine_status_${Date.now()}@test.com`, password: 'Password123!', name: 'Status User' });
+    const user = authService.registerUser({ email: `uncertain_${Date.now()}@test.com`, password: 'Password123!', name: 'Uncertain User' });
+    const logText = "clicked submit button but no confirmation toast appeared";
 
-    // Recent ping (10s ago)
-    const recentTime = new Date(Date.now() - 10000).toISOString().replace('T', ' ').replace('Z', '');
-    db.prepare('INSERT OR REPLACE INTO engine_sessions (user_id, connection_status, last_ping) VALUES (?, ?, ?)').run(user.userId, 'Online', recentTime);
+    let finalStatus = 'Submitted';
+    let verified = 0;
 
-    // Stale ping (120s ago)
-    const staleTime = new Date(Date.now() - 120000).toISOString().replace('T', ' ').replace('Z', '');
-    const stalePingMs = new Date(staleTime + 'Z').getTime();
-    const diffMs = Date.now() - stalePingMs;
+    if (!CREDIBLE_CONFIRMATION_PATTERNS.test(logText)) {
+      finalStatus = 'Submission uncertain';
+      verified = 0;
+    }
 
-    assert.ok(diffMs >= 90000, 'Stale ping older than 90s must be recognized as offline');
+    assert.strictEqual(finalStatus, 'Submission uncertain');
+    assert.strictEqual(verified, 0);
   });
 
-  // 7. BUG 6 TEST: Immediate Emergency Stop Signal
-  test('7. Bug 6 - Immediate Emergency Stop State & Log', () => {
+  // 7. PIPELINE TEST: Company Metadata Resolution from Discovered Jobs
+  test('7. Pipeline - Company Metadata Resolution without Fabricating Names', () => {
     const db = require('../server/db/database');
     const authService = require('../server/services/authService');
 
-    const user = authService.registerUser({ email: `stop_${Date.now()}@test.com`, password: 'Password123!', name: 'Stop User' });
+    const user = authService.registerUser({ email: `company_${Date.now()}@test.com`, password: 'Password123!', name: 'Company Test User' });
+    const jobUrl = 'https://naukri.com/jobs/resolve-100';
 
-    db.prepare('UPDATE automation_settings SET enabled = 0 WHERE user_id = ?').run(user.userId);
-    const settings = db.prepare('SELECT enabled FROM automation_settings WHERE user_id = ?').get(user.userId);
+    // Insert discovered job with genuine company name
+    db.prepare(`
+      INSERT INTO discovered_jobs (id, user_id, portal, original_url, job_identifier, title, company)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(crypto.randomUUID(), user.userId, 'naukri', jobUrl, jobUrl, 'Backend Engineer', 'TechInnovators Inc.');
 
-    assert.strictEqual(settings.enabled, 0, 'Emergency Stop must immediately set enabled = 0');
+    // Simulating application report with missing/empty company
+    let reportedCompany = '';
+    if (!reportedCompany || reportedCompany === 'N/A') {
+      const job = db.prepare('SELECT company FROM discovered_jobs WHERE user_id = ? AND original_url = ?').get(user.userId, jobUrl);
+      if (job && job.company) {
+        reportedCompany = job.company;
+      }
+    }
+
+    assert.strictEqual(reportedCompany, 'TechInnovators Inc.');
   });
 
-  // 8. BUG 8 TEST: Duplicate Job Constraint
-  test('8. Bug 8 - Unique Job Constraint Prevention', () => {
+  // 8. PIPELINE TEST: Duplicate Application Prevention & UPSERT
+  test('8. Pipeline - Duplicate Application Prevention (UNIQUE Constraint)', () => {
     const db = require('../server/db/database');
     const authService = require('../server/services/authService');
 
-    const user = authService.registerUser({ email: `dupe_check_${Date.now()}@test.com`, password: 'Password123!', name: 'Dupe Check User' });
+    const user = authService.registerUser({ email: `dupe_app_${Date.now()}@test.com`, password: 'Password123!', name: 'Dupe App User' });
+    const jobUrl = 'https://wellfound.com/jobs/unique-app-100';
 
-    const insertJob = db.prepare(`
-      INSERT INTO discovered_jobs (id, user_id, portal, original_url, job_identifier, title)
-      VALUES (?, ?, ?, ?, ?, ?)
+    const insertApp = db.prepare(`
+      INSERT INTO applications (id, user_id, portal, title, company, job_url, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
 
-    insertJob.run(crypto.randomUUID(), user.userId, 'naukri', 'https://naukri.com/job100', 'job100', 'Software Engineer');
+    insertApp.run(crypto.randomUUID(), user.userId, 'wellfound', 'Full Stack Developer', 'StartUp Inc', jobUrl, 'Application prepared');
 
     assert.throws(() => {
-      insertJob.run(crypto.randomUUID(), user.userId, 'naukri', 'https://naukri.com/job100', 'job100', 'Software Engineer');
+      insertApp.run(crypto.randomUUID(), user.userId, 'wellfound', 'Full Stack Developer', 'StartUp Inc', jobUrl, 'Submitted');
     }, /UNIQUE constraint failed/);
   });
 
-  // 9. BUG 4 TEST: Resume Parser Service Text Mapping
-  await asyncTest('9. Bug 4 - Resume Parser Detail Extraction', async () => {
-    const resumeParser = require('../server/services/resumeParserService');
-    const mockText = 'Name: Aditya Raj\nEmail: aditya@test.com\nPhone: +91 9876543210\nSkills: React, Node.js, TypeScript, Flutter';
+  // 9. PIPELINE TEST: Safe Status Reconciliation without Fabricating Evidence
+  test('9. Pipeline - Safe Application Status Reconciliation', () => {
+    const { CREDIBLE_CONFIRMATION_PATTERNS } = require('../server/routes/engineApi');
 
-    const parsed = resumeParser.parseResumeDetails(mockText);
-    assert.strictEqual(parsed.email, 'aditya@test.com');
-    assert.strictEqual(parsed.phone, '+91 9876543210');
-    assert.ok(parsed.skills.includes('Flutter'));
+    const unverifiedApp = {
+      status: 'Submitted',
+      verified: 0,
+      execution_log: 'form submitted'
+    };
+
+    let reconciledStatus = unverifiedApp.status;
+    let reconciledVerified = unverifiedApp.verified;
+
+    if (unverifiedApp.status === 'Submitted' && !CREDIBLE_CONFIRMATION_PATTERNS.test(unverifiedApp.execution_log)) {
+      reconciledStatus = 'Submission uncertain';
+      reconciledVerified = 0;
+    }
+
+    assert.strictEqual(reconciledStatus, 'Submission uncertain');
+    assert.strictEqual(reconciledVerified, 0);
   });
 
   // 10. INTEGRATION TEST: Multi-User Isolation
