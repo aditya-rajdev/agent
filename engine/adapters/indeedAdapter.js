@@ -15,8 +15,15 @@ class IndeedAdapter extends BasePortalAdapter {
   }
 
   getSearchUrls() {
-    const roles = (this.engineConfig.preferences?.roles || ['Full Stack Developer']).map(r => encodeURIComponent(r.toLowerCase()));
-    return roles.map(r => `https://in.indeed.com/jobs?q=${r}&sort=date&fromage=14`);
+    const configuredRoles = this.engineConfig.preferences?.roles || [];
+    if (!Array.isArray(configuredRoles) || configuredRoles.length === 0) {
+      console.warn('[WARN] [Indeed] No target job roles configured in Job Preferences. Skipping Indeed search.');
+      return [];
+    }
+    return configuredRoles.map(r => {
+      const query = encodeURIComponent(String(r).trim().toLowerCase());
+      return `https://in.indeed.com/jobs?q=${query}&sort=date&fromage=14`;
+    });
   }
 
   getInjectedScript() {
@@ -26,8 +33,8 @@ class IndeedAdapter extends BasePortalAdapter {
 
     const cfg = {
       CV: {
-        name: this.engineConfig.user?.name || '',
-        email: this.engineConfig.user?.email || '',
+        name: this.engineConfig.profile?.full_name || this.engineConfig.user?.name || '',
+        email: this.engineConfig.profile?.email || this.engineConfig.user?.email || '',
         phone: this.engineConfig.profile?.phone || '',
         location: this.engineConfig.profile?.location || '',
         currentRole: this.engineConfig.profile?.current_role || '',

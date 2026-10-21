@@ -44,7 +44,7 @@ router.get('/', authenticate, (req, res) => {
 
   if (profile && profile.highlights) {
     try {
-      profile.highlights = JSON.parse(profile.highlights);
+      profile.highlights = typeof profile.highlights === 'string' ? JSON.parse(profile.highlights) : profile.highlights;
     } catch (e) {
       profile.highlights = [];
     }
@@ -55,25 +55,31 @@ router.get('/', authenticate, (req, res) => {
 
 router.put('/', authenticate, (req, res) => {
   const {
-    current_role, company, education, years_experience, skills,
-    highlights, notice_period, current_ctc, expected_ctc, dob, gender,
-    work_auth, github_url, linkedin_url, portfolio_url, location, relocate_pref, remote_pref, cover_letter_template
+    full_name, email, phone, location, dob, gender, education, graduation_year,
+    years_experience, skills, current_role, company, current_ctc, expected_ctc,
+    notice_period, start_date, work_auth, sponsorship_req, relocate_pref, remote_pref,
+    github_url, linkedin_url, portfolio_url, highlights, cover_letter_template
   } = req.body;
 
   const highlightsJson = Array.isArray(highlights) ? JSON.stringify(highlights) : (highlights || '[]');
 
   db.prepare(`
     UPDATE profiles SET
-      current_role = ?, company = ?, education = ?, years_experience = ?, skills = ?,
-      highlights = ?, notice_period = ?, current_ctc = ?, expected_ctc = ?, dob = ?, gender = ?,
-      work_auth = ?, github_url = ?, linkedin_url = ?, portfolio_url = ?, location = ?,
-      relocate_pref = ?, remote_pref = ?, cover_letter_template = ?, updated_at = CURRENT_TIMESTAMP
+      full_name = ?, email = ?, phone = ?, location = ?, dob = ?, gender = ?,
+      education = ?, graduation_year = ?, years_experience = ?, skills = ?,
+      current_role = ?, company = ?, current_ctc = ?, expected_ctc = ?,
+      notice_period = ?, start_date = ?, work_auth = ?, sponsorship_req = ?,
+      relocate_pref = ?, remote_pref = ?, github_url = ?, linkedin_url = ?,
+      portfolio_url = ?, highlights = ?, cover_letter_template = ?,
+      updated_at = CURRENT_TIMESTAMP
     WHERE user_id = ?
   `).run(
-    current_role || '', company || '', education || '', years_experience || '', skills || '',
-    highlightsJson, notice_period || '30 days', current_ctc || '0', expected_ctc || '0', dob || '', gender || '',
-    work_auth || '', github_url || '', linkedin_url || '', portfolio_url || '', location || '',
-    relocate_pref || '', remote_pref || '', cover_letter_template || '', req.user.userId
+    full_name || '', email || '', phone || '', location || '', dob || '', gender || 'Prefer not to say',
+    education || '', graduation_year || '', years_experience || '', skills || '',
+    current_role || '', company || '', current_ctc || '0', expected_ctc || '0',
+    notice_period || '30 days', start_date || '', work_auth || 'Authorized to work', sponsorship_req || 'No',
+    relocate_pref || '', remote_pref || '', github_url || '', linkedin_url || '',
+    portfolio_url || '', highlightsJson, cover_letter_template || '', req.user.userId
   );
 
   res.json({ message: 'Profile updated successfully.' });

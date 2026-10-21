@@ -30,24 +30,30 @@ function initSchema() {
 
     CREATE TABLE IF NOT EXISTS profiles (
       user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-      current_role TEXT DEFAULT '',
-      company TEXT DEFAULT '',
-      education TEXT DEFAULT '',
-      years_experience TEXT DEFAULT '0',
-      skills TEXT DEFAULT '',
-      highlights TEXT DEFAULT '[]',
-      notice_period TEXT DEFAULT '30 days',
-      current_ctc TEXT DEFAULT '0',
-      expected_ctc TEXT DEFAULT '0',
+      full_name TEXT DEFAULT '',
+      email TEXT DEFAULT '',
+      phone TEXT DEFAULT '',
+      location TEXT DEFAULT '',
       dob TEXT DEFAULT '',
       gender TEXT DEFAULT 'Prefer not to say',
+      education TEXT DEFAULT '',
+      graduation_year TEXT DEFAULT '',
+      years_experience TEXT DEFAULT '0',
+      skills TEXT DEFAULT '',
+      current_role TEXT DEFAULT '',
+      company TEXT DEFAULT '',
+      current_ctc TEXT DEFAULT '0',
+      expected_ctc TEXT DEFAULT '0',
+      notice_period TEXT DEFAULT '30 days',
+      start_date TEXT DEFAULT '',
       work_auth TEXT DEFAULT 'Authorized to work',
+      sponsorship_req TEXT DEFAULT 'No',
+      relocate_pref TEXT DEFAULT 'Yes, open to relocation',
+      remote_pref TEXT DEFAULT 'Yes, open to remote',
       github_url TEXT DEFAULT '',
       linkedin_url TEXT DEFAULT '',
       portfolio_url TEXT DEFAULT '',
-      location TEXT DEFAULT '',
-      relocate_pref TEXT DEFAULT 'Yes, open to relocation',
-      remote_pref TEXT DEFAULT 'Yes, open to remote',
+      highlights TEXT DEFAULT '[]',
       cover_letter_template TEXT DEFAULT '',
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -155,6 +161,28 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_apps_user_status ON applications(user_id, status);
     CREATE INDEX IF NOT EXISTS idx_logs_user_date ON automation_logs(user_id, created_at);
   `);
+
+  // Perform migration for new columns if DB already exists
+  try {
+    const columns = db.prepare("PRAGMA table_info(profiles)").all().map(c => c.name);
+    const newCols = [
+      ['full_name', "TEXT DEFAULT ''"],
+      ['email', "TEXT DEFAULT ''"],
+      ['phone', "TEXT DEFAULT ''"],
+      ['dob', "TEXT DEFAULT ''"],
+      ['gender', "TEXT DEFAULT 'Prefer not to say'"],
+      ['graduation_year', "TEXT DEFAULT ''"],
+      ['start_date', "TEXT DEFAULT ''"],
+      ['sponsorship_req', "TEXT DEFAULT 'No'"]
+    ];
+    newCols.forEach(([colName, colDef]) => {
+      if (!columns.includes(colName)) {
+        db.exec(`ALTER TABLE profiles ADD COLUMN ${colName} ${colDef}`);
+      }
+    });
+  } catch (e) {
+    console.warn('Migration warning:', e.message);
+  }
 }
 
 initSchema();

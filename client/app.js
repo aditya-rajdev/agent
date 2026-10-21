@@ -184,13 +184,26 @@ async function loadProfile() {
     const data = await res.json();
     const p = data.profile || {};
 
-    document.getElementById('profCurrentRole').value = p.current_role || '';
+    document.getElementById('profFullName').value = p.full_name || currentUser.name || '';
+    document.getElementById('profEmail').value = p.email || currentUser.email || '';
+    document.getElementById('profPhone').value = p.phone || currentUser.phone || '';
+    document.getElementById('profLocation').value = p.location || '';
+    document.getElementById('profDOB').value = p.dob || '';
+    document.getElementById('profGender').value = p.gender || 'Prefer not to say';
     document.getElementById('profEducation').value = p.education || '';
+    document.getElementById('profGraduationYear').value = p.graduation_year || '';
     document.getElementById('profYearsExp').value = p.years_experience || '';
     document.getElementById('profSkills').value = p.skills || '';
-    document.getElementById('profNoticePeriod').value = p.notice_period || '30 days';
+    document.getElementById('profCurrentRole').value = p.current_role || '';
+    document.getElementById('profCompany').value = p.company || '';
     document.getElementById('profCurrentCTC').value = p.current_ctc || '0';
     document.getElementById('profExpectedCTC').value = p.expected_ctc || '0';
+    document.getElementById('profNoticePeriod').value = p.notice_period || '30 days';
+    document.getElementById('profStartDate').value = p.start_date || '';
+    document.getElementById('profWorkAuth').value = p.work_auth || 'Authorized to work in my country of residence.';
+    document.getElementById('profSponsorship').value = p.sponsorship_req || 'No';
+    document.getElementById('profRelocatePref').value = p.relocate_pref || 'Yes, open to relocation.';
+    document.getElementById('profRemotePref').value = p.remote_pref || 'Yes, set up for remote work.';
     document.getElementById('profLinkedin').value = p.linkedin_url || '';
     document.getElementById('profGithub').value = p.github_url || '';
     document.getElementById('profPortfolio').value = p.portfolio_url || '';
@@ -201,7 +214,10 @@ async function loadProfile() {
       list.innerHTML = '<strong>Uploaded Resumes:</strong>' + data.resumes.map(r => `
         <div style="background:var(--bg-input); padding:8px 12px; border-radius:6px; margin-top:6px; display:flex; justify-content:space-between; align-items:center;">
           <span>📄 ${r.filename} ${r.is_primary ? '<strong style="color:var(--success)">(Primary)</strong>' : ''}</span>
-          <button onclick="deleteResume('${r.id}')" style="background:none; border:none; color:var(--danger); cursor:pointer;">Delete</button>
+          <div>
+            <a href="/api/profile/resumes/download/${r.id}" target="_blank" style="color:var(--primary); text-decoration:none; margin-right:12px; font-weight:600;">Download</a>
+            <button onclick="deleteResume('${r.id}')" style="background:none; border:none; color:var(--danger); cursor:pointer; font-weight:600;">Delete</button>
+          </div>
         </div>
       `).join('');
     } else {
@@ -343,13 +359,26 @@ function setupForms() {
   // Profile Form
   document.getElementById('profileForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const current_role = document.getElementById('profCurrentRole').value;
+    const full_name = document.getElementById('profFullName').value;
+    const email = document.getElementById('profEmail').value;
+    const phone = document.getElementById('profPhone').value;
+    const location = document.getElementById('profLocation').value;
+    const dob = document.getElementById('profDOB').value;
+    const gender = document.getElementById('profGender').value;
     const education = document.getElementById('profEducation').value;
+    const graduation_year = document.getElementById('profGraduationYear').value;
     const years_experience = document.getElementById('profYearsExp').value;
     const skills = document.getElementById('profSkills').value;
-    const notice_period = document.getElementById('profNoticePeriod').value;
+    const current_role = document.getElementById('profCurrentRole').value;
+    const company = document.getElementById('profCompany').value;
     const current_ctc = document.getElementById('profCurrentCTC').value;
     const expected_ctc = document.getElementById('profExpectedCTC').value;
+    const notice_period = document.getElementById('profNoticePeriod').value;
+    const start_date = document.getElementById('profStartDate').value;
+    const work_auth = document.getElementById('profWorkAuth').value;
+    const sponsorship_req = document.getElementById('profSponsorship').value;
+    const relocate_pref = document.getElementById('profRelocatePref').value;
+    const remote_pref = document.getElementById('profRemotePref').value;
     const linkedin_url = document.getElementById('profLinkedin').value;
     const github_url = document.getElementById('profGithub').value;
     const portfolio_url = document.getElementById('profPortfolio').value;
@@ -359,8 +388,10 @@ function setupForms() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({
-          current_role, education, years_experience, skills, notice_period,
-          current_ctc, expected_ctc, linkedin_url, github_url, portfolio_url
+          full_name, email, phone, location, dob, gender, education, graduation_year,
+          years_experience, skills, current_role, company, current_ctc, expected_ctc,
+          notice_period, start_date, work_auth, sponsorship_req, relocate_pref, remote_pref,
+          linkedin_url, github_url, portfolio_url
         })
       });
       const data = await res.json();
@@ -439,7 +470,7 @@ async function deleteResume(id) {
   try {
     const res = await fetch(`/api/profile/resumes/${id}`, {
       method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` }
+      headers: { 'Authorization': `Bearer ${token}` },
     });
     const data = await res.json();
     alert(data.message);

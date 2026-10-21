@@ -22,7 +22,24 @@ router.get('/settings', authenticate, (req, res) => {
 
   const session = db.prepare('SELECT * FROM engine_sessions WHERE user_id = ?').get(req.user.userId);
 
-  res.json({ settings, engineSession: session || { connection_status: 'Offline' } });
+  let connectionStatus = 'Offline';
+  if (session && session.last_ping) {
+    const lastPingMs = new Date(session.last_ping + 'Z').getTime(); // parse UTC
+    const diffMs = Date.now() - (isNaN(lastPingMs) ? new Date(session.last_ping).getTime() : lastPingMs);
+    // Heartbeat timeout threshold: 90 seconds
+    if (diffMs < 90000) {
+      connectionStatus = 'Online';
+    }
+  }
+
+  res.json({
+    settings,
+    engineSession: {
+      connection_status: connectionStatus,
+      last_ping: session ? session.last_ping : null,
+      system_info: session ? session.system_info : '{}'
+    }
+  });
 });
 
 router.put('/settings', authenticate, (req, res) => {

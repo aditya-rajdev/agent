@@ -9,6 +9,7 @@ const { chromium } = require('playwright-core');
 require('dotenv').config();
 
 const { minimizeBrowserWindows, hideBrowserWindows } = require('../window-utils');
+const { applyExternal } = require('../external-apply');
 
 const NaukriAdapter = require('./adapters/naukriAdapter');
 const WellfoundAdapter = require('./adapters/wellfoundAdapter');
@@ -17,10 +18,14 @@ const IndeedAdapter = require('./adapters/indeedAdapter');
 const DASHBOARD_URL = process.env.DASHBOARD_URL || 'http://localhost:3000';
 const ENGINE_API_KEY = process.env.ENGINE_API_KEY || '';
 
-let isRunning = false;
+// Centralized Controller State
+let automationState = 'Idle'; // 'Idle' | 'Running' | 'Stopping' | 'Stopped' | 'Error'
+let isBatchProcessing = false;
+let activeAbortController = null;
+const activeContexts = new Set();
 
 const log = (msg) => {
-  const line = `[${new Date().toLocaleString()}] [Windows Engine] ${msg}`;
+  const line = `[${new Date().toLocaleString()}] [Windows Engine] [${automationState}] ${msg}`;
   console.log(line);
 };
 
@@ -56,7 +61,8 @@ async function sendHeartbeat() {
           platform: process.platform,
           arch: process.arch,
           nodeVersion: process.version,
-          pid: process.pid
+          pid: process.pid,
+          automationState
         }
       })
     });
@@ -64,9 +70,9 @@ async function sendHeartbeat() {
 }
 
 async function reportDiscoveredJob(portal, jobData) {
-  if (!ENGINE_API_KEY) return;
+  if (!ENGINE_API_KEY) return null;
   try {
-    await fetch(`${DASHBOARD_URL}/api/engine/report-job`, {
+    const res = await fetch(`${DASHBOARD_URL}/api/engine/report-job`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -80,12 +86,16 @@ async function reportDiscoveredJob(portal, jobData) {
         company: jobData.company || '',
         location: jobData.location || 'Remote',
         salary: jobData.salary || '',
-        description: jobData.title + ' position'
+        description: jobData.description || (jobData.title + ' position')
       })
     });
-    log(`Reported Discovered Job: "${jobData.title}" at "${jobData.company || 'Company'}"`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    log(`Reported Discovered Job: "${jobData.title}" at "${jobData.company || 'Company'}" (Score: ${data.matchScore}%, Status: ${data.classification})`);
+    return data;
   } catch (err) {
     log(`Report Job Error: ${err.message}`);
+    return null;
   }
 }
 
@@ -104,7 +114,7 @@ async function reportApplicationResult(portal, appData) {
         company: appData.company || '',
         job_url: appData.link || '',
         status: appData.status || 'Submitted',
-        verified: appData.verified || 1
+        verified: appData.verified ? 1 : 0
       })
     });
     log(`Reported Application (${appData.status}): "${appData.title}"`);
@@ -113,31 +123,69 @@ async function reportApplicationResult(portal, appData) {
   }
 }
 
-function setupConsoleListener(page, portalName) {
-  page.on('console', (msg) => {
+// Emergency Stop Cancellation Trigger
+async function stopAllAutomation() {
+  if (automationState === 'Stopping' || automationState === 'Stopped') return;
+  automationState = 'Stopping';
+  log('🚨 Emergency Stop Signal Received! Immediately aborting active tasks and closing browser contexts...');
+
+  if (activeAbortController) {
+    activeAbortController.abort();
+  }
+
+  for (const ctx of activeContexts) {
+    try {
+      await ctx.close();
+    } catch (e) {}
+  }
+  activeContexts.clear();
+
+  automationState = 'Stopped';
+  isBatchProcessing = false;
+  log('🛑 All browser contexts closed. Automation Engine Stopped.');
+}
+
+function setupConsoleListener(page, portalName, config, signal) {
+  const externalQueue = [];
+
+  page.on('console', async (msg) => {
+    if (signal.aborted) return;
     const text = msg.text();
     if (!/auto-apply/.test(text)) return;
     const clean = text.replace(/%c\[auto-apply\]\s*\S*/, '').trim();
     log(`  [${portalName}] ${clean.slice(0, 160)}`);
 
-    // Parse discovered job lines: "▶ Applying: <title> | <href>" or "▶ Opening: <title>"
+    // Parse discovered job lines
     const m = clean.match(/▶ (?:Applying|Opening)[^:]*: (.+)/);
-    if (m) {
+    if (m && !signal.aborted) {
       const [main, link, cardSalary] = m[1].split(' | ');
       const atParts = main.split(' @ ');
       const company = atParts.length > 1 ? atParts.pop() : '';
       const title = atParts.join(' @ ');
 
-      reportDiscoveredJob(portalName, {
+      const jobMatch = await reportDiscoveredJob(portalName, {
         title: title.trim(),
         company: (company || '').replace(/^\?$/, '').trim(),
         link: (link || '').trim(),
         salary: (cardSalary || '').trim()
       });
+
+      // Enforce AI score threshold and hard eligibility check
+      if (jobMatch && (!jobMatch.isEligible || jobMatch.matchScore < (config.preferences?.min_match_score || 50))) {
+        log(`  [SKIPPED] Job "${title.trim()}" is ineligible or below match threshold (${jobMatch.matchScore}% < ${config.preferences?.min_match_score || 50}%).`);
+      }
     }
 
-    // Parse application submission confirmation lines
-    if (/✅ applied|application sent|application submitted/i.test(clean)) {
+    // External ATS jobs
+    const ext = clean.match(/🔗 EXTERNAL \| (.+) \| (\S+)/);
+    if (ext && !signal.aborted) {
+      const extTitle = ext[1].trim();
+      const extHref = ext[2].trim();
+      externalQueue.push({ title: extTitle, href: extHref });
+    }
+
+    // Application result confirmations
+    if (/✅ applied|application sent|application submitted/i.test(clean) && !signal.aborted) {
       const titlem = clean.match(/(?:applied|submitted|sent)[^:]*:?\s*(.+)/i);
       reportApplicationResult(portalName, {
         title: titlem ? titlem[1].trim() : 'Applied Role',
@@ -146,32 +194,43 @@ function setupConsoleListener(page, portalName) {
       });
     }
   });
+
+  return externalQueue;
 }
 
 async function runAutomationCycle() {
-  if (isRunning) return;
-  isRunning = true;
+  if (isBatchProcessing || automationState === 'Stopping') return;
+  isBatchProcessing = true;
+
+  activeAbortController = new AbortController();
+  const { signal } = activeAbortController;
 
   try {
     const config = await fetchSyncConfig();
     if (!config) {
-      isRunning = false;
+      isBatchProcessing = false;
       return;
     }
 
-    const { user, profile, preferences, automationSettings } = config;
+    const { user, profile, preferences, automationSettings, resume } = config;
 
     if (!automationSettings.enabled) {
-      log('Automation is currently PAUSED on Dashboard.');
-      isRunning = false;
+      if (automationState !== 'Stopped') {
+        log('Automation is currently PAUSED on Dashboard.');
+      }
+      automationState = 'Stopped';
+      isBatchProcessing = false;
       return;
     }
 
+    automationState = 'Running';
     log(`Sync OK for User: ${user.name} (${user.email}) | Mode: ${automationSettings.dry_run ? 'DRY RUN' : 'LIVE SUBMISSION'}`);
 
     const enabledPortals = automationSettings.enabled_portals || ['naukri', 'wellfound', 'indeed'];
 
     for (const portalName of enabledPortals) {
+      if (signal.aborted || automationState !== 'Running') break;
+
       let adapter = null;
       if (portalName === 'naukri') adapter = new NaukriAdapter(config);
       if (portalName === 'wellfound') adapter = new WellfoundAdapter(config);
@@ -179,10 +238,14 @@ async function runAutomationCycle() {
 
       if (!adapter) continue;
 
-      log(`--- Starting Automation Batch for Portal: ${portalName.toUpperCase()} ---`);
-
-      const profileDir = adapter.getProfileDir();
       const searchUrls = adapter.getSearchUrls();
+      if (!searchUrls || searchUrls.length === 0) {
+        log(`No target search URLs for ${portalName}. Skipping portal.`);
+        continue;
+      }
+
+      log(`--- Starting Automation Batch for Portal: ${portalName.toUpperCase()} ---`);
+      const profileDir = adapter.getProfileDir();
 
       let ctx = null;
       try {
@@ -190,44 +253,90 @@ async function runAutomationCycle() {
           channel: 'chrome',
           headless: false,
           viewport: { width: 1280, height: 900 },
-          args: [
-            '--window-position=-32000,-32000'
-          ]
+          args: ['--window-position=-32000,-32000']
         });
+
+        activeContexts.add(ctx);
 
         // Hide browser window on Windows
         setTimeout(() => hideBrowserWindows(profileDir).catch(() => {}), 1500);
 
-        ctx.on('page', (p) => setupConsoleListener(p, portalName));
-
         const page = ctx.pages()[0] || (await ctx.newPage());
-        setupConsoleListener(page, portalName);
+        const externalQueue = setupConsoleListener(page, portalName, config, signal);
 
         for (const url of searchUrls) {
+          if (signal.aborted || automationState !== 'Running') break;
+
           log(`Navigating to search feed: ${url}`);
           await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
-          await page.waitForTimeout(5000);
+          await page.waitForLoadState('domcontentloaded').catch(() => {});
 
           const injectedScript = adapter.getInjectedScript();
-          if (injectedScript) {
+          if (injectedScript && !signal.aborted) {
             log(`Injecting Automation Adapter into ${portalName}...`);
             await page.evaluate(injectedScript).catch(e => log(`Script injection notice: ${e.message}`));
           }
 
-          await page.waitForTimeout(15000);
+          // Dynamic Playwright Wait Condition instead of fixed 15s timeout
+          await page.waitForTimeout(10000);
+
+          // Process any queued external ATS jobs for this portal batch
+          while (externalQueue.length > 0 && !signal.aborted && automationState === 'Running') {
+            const extJob = externalQueue.shift();
+            log(`Processing External ATS Job: "${extJob.title}" at ${extJob.href}`);
+            const extResult = await applyExternal(ctx, extJob, {
+              CV: {
+                name: profile.full_name || user.name,
+                email: profile.email || user.email,
+                phone: profile.phone,
+                location: profile.location,
+                currentRole: profile.current_role,
+                company: profile.company,
+                noticePeriod: profile.notice_period,
+                currentCTC: profile.current_ctc,
+                expectedCTC: profile.expected_ctc,
+                linkedin: profile.linkedin_url,
+                github: profile.github_url,
+                portfolio: profile.portfolio_url,
+                education: profile.education,
+                skills: profile.skills,
+                highlights: profile.highlights
+              },
+              live: !automationSettings.dry_run,
+              resumePath: resume?.file_path || '',
+              log
+            });
+
+            log(`External ATS Result (${extJob.title}): ${extResult.status} - ${extResult.detail}`);
+            reportApplicationResult(portalName, {
+              title: extJob.title,
+              company: '',
+              link: extJob.href,
+              status: extResult.status === 'applied' ? 'Submitted' : extResult.status === 'would-apply' ? 'Application prepared' : 'Submission uncertain',
+              verified: extResult.status === 'applied' ? 1 : 0
+            });
+          }
         }
 
       } catch (err) {
-        log(`Portal Error (${portalName}): ${err.message}`);
+        log(`Portal Execution Warning (${portalName}): ${err.message}`);
       } finally {
-        if (ctx) await ctx.close().catch(() => {});
+        if (ctx) {
+          activeContexts.delete(ctx);
+          await ctx.close().catch(() => {});
+        }
       }
+    }
+
+    if (automationState === 'Running') {
+      automationState = 'Idle';
     }
 
   } catch (err) {
     log(`Execution Error: ${err.message}`);
+    automationState = 'Error';
   } finally {
-    isRunning = false;
+    isBatchProcessing = false;
   }
 }
 
@@ -239,7 +348,17 @@ log('=======================================================');
 
 // Initial Heartbeat and execution loop
 sendHeartbeat();
-setInterval(sendHeartbeat, 30000); // Heartbeat every 30 seconds
+setInterval(sendHeartbeat, 15000); // Heartbeat every 15 seconds
+
+// Check emergency stop and config every 10 seconds
+setInterval(async () => {
+  const config = await fetchSyncConfig();
+  if (config && !config.automationSettings.enabled) {
+    if (automationState === 'Running' || isBatchProcessing) {
+      await stopAllAutomation();
+    }
+  }
+}, 10000);
 
 // Run initial cycle after 2 seconds, then every 30 minutes
 setTimeout(runAutomationCycle, 2000);

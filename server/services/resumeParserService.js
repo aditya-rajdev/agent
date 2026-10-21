@@ -19,7 +19,7 @@ async function extractTextFromDOCX(filePath) {
 
 function parseResumeDetails(text) {
   const emailMatch = text.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/i);
-  const phoneMatch = text.match(/(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4,6}/);
+  const phoneMatch = text.match(/(\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3}[-.\s]?\d{3,5}/);
   const githubMatch = text.match(/(https?:\/\/)?(www\.)?github\.com\/[a-zA-Z0-9_-]+/i);
   const linkedinMatch = text.match(/(https?:\/\/)?(www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+/i);
 
@@ -41,7 +41,7 @@ function parseResumeDetails(text) {
 
   return {
     email: emailMatch ? emailMatch[1] : '',
-    phone: phoneMatch ? phoneMatch[0] : '',
+    phone: phoneMatch ? phoneMatch[0].trim() : '',
     githubUrl: githubMatch ? (githubMatch[0].startsWith('http') ? githubMatch[0] : 'https://' + githubMatch[0]) : '',
     linkedinUrl: linkedinMatch ? (linkedinMatch[0].startsWith('http') ? linkedinMatch[0] : 'https://' + linkedinMatch[0]) : '',
     skills: foundSkills.join(', '),

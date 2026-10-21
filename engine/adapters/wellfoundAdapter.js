@@ -15,11 +15,14 @@ class WellfoundAdapter extends BasePortalAdapter {
   }
 
   getSearchUrls() {
+    const configuredRoles = this.engineConfig.preferences?.roles || [];
+    if (!Array.isArray(configuredRoles) || configuredRoles.length === 0) {
+      console.warn('[WARN] [Wellfound] No target job roles configured in Job Preferences. Using default feed.');
+      return ['https://wellfound.com/jobs'];
+    }
     return [
       'https://wellfound.com/jobs',
-      'https://wellfound.com/role/l/software-engineer/india',
-      'https://wellfound.com/role/r/software-engineer',
-      'https://wellfound.com/role/r/full-stack-engineer'
+      ...configuredRoles.map(r => `https://wellfound.com/role/r/${encodeURIComponent(String(r).trim().toLowerCase().replace(/\s+/g, '-'))}`)
     ];
   }
 
@@ -30,8 +33,8 @@ class WellfoundAdapter extends BasePortalAdapter {
 
     const cfg = {
       CV: {
-        name: this.engineConfig.user?.name || '',
-        email: this.engineConfig.user?.email || '',
+        name: this.engineConfig.profile?.full_name || this.engineConfig.user?.name || '',
+        email: this.engineConfig.profile?.email || this.engineConfig.user?.email || '',
         phone: this.engineConfig.profile?.phone || '',
         location: this.engineConfig.profile?.location || '',
         currentRole: this.engineConfig.profile?.current_role || '',

@@ -15,8 +15,15 @@ class NaukriAdapter extends BasePortalAdapter {
   }
 
   getSearchUrls() {
-    const roles = (this.engineConfig.preferences?.roles || ['Full Stack Developer']).map(r => encodeURIComponent(r.toLowerCase().replace(/\s+/g, '-')));
-    return roles.map(r => `https://www.naukri.com/${r}-jobs?experience=1`);
+    const configuredRoles = this.engineConfig.preferences?.roles || [];
+    if (!Array.isArray(configuredRoles) || configuredRoles.length === 0) {
+      console.warn('[WARN] [Naukri] No target job roles configured in Job Preferences. Skipping Naukri search.');
+      return [];
+    }
+    return configuredRoles.map(r => {
+      const slug = encodeURIComponent(String(r).trim().toLowerCase().replace(/\s+/g, '-'));
+      return `https://www.naukri.com/${slug}-jobs?experience=1`;
+    });
   }
 
   getInjectedScript() {
@@ -24,11 +31,10 @@ class NaukriAdapter extends BasePortalAdapter {
     if (!fs.existsSync(scriptPath)) return '';
     const raw = fs.readFileSync(scriptPath, 'utf8');
 
-    // Inject configuration from Dashboard
     const cfg = {
       CV: {
-        name: this.engineConfig.profile?.current_role ? this.engineConfig.user?.name : '',
-        email: this.engineConfig.user?.email || '',
+        name: this.engineConfig.profile?.full_name || this.engineConfig.user?.name || '',
+        email: this.engineConfig.profile?.email || this.engineConfig.user?.email || '',
         phone: this.engineConfig.profile?.phone || '',
         location: this.engineConfig.profile?.location || '',
         currentRole: this.engineConfig.profile?.current_role || '',

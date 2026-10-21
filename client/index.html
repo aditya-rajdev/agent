@@ -66,7 +66,7 @@
           To enable automated background execution on your Windows 10/11 PC, copy your Engine API Key below and run <code>npm run engine</code> in your local terminal.
         </p>
         <div class="form-group">
-          <label>Your Engine API Key:</label>
+          <label for="apiKeyDisplay">Your Engine API Key:</label>
           <input type="text" class="form-control" id="apiKeyDisplay" readonly value="Login to view API key">
         </div>
       </div>
@@ -78,7 +78,7 @@
         <div class="form-section">
           <h2>🎯 Target Job Roles & Categories</h2>
           <div class="form-group">
-            <label>Select Preferred Roles (Comma-separated or check boxes):</label>
+            <label for="prefRoles">Select Preferred Roles (Comma-separated):</label>
             <input type="text" class="form-control" id="prefRoles" placeholder="Flutter Developer, Android Developer, React Native Developer, Full Stack Developer, AI/ML Engineer">
           </div>
           <div class="form-group">
@@ -96,15 +96,15 @@
         <div class="form-section">
           <h2>📍 Location & Work Arrangement</h2>
           <div class="form-group">
-            <label>Target Locations (Comma-separated):</label>
+            <label for="prefLocations">Target Locations (Comma-separated):</label>
             <input type="text" class="form-control" id="prefLocations" placeholder="Remote, Remote Worldwide, Remote India, Bengaluru, Mumbai, Delhi NCR">
           </div>
           <div class="form-group">
-            <label>Excluded Companies & Blocklist (Comma-separated):</label>
+            <label for="prefExcludedCompanies">Excluded Companies & Blocklist (Comma-separated):</label>
             <input type="text" class="form-control" id="prefExcludedCompanies" placeholder="Staffing Agency X, Unwanted Startup Y">
           </div>
           <div class="form-group">
-            <label>Excluded Job Title Keywords:</label>
+            <label for="prefExcludedKeywords">Excluded Job Title Keywords:</label>
             <input type="text" class="form-control" id="prefExcludedKeywords" placeholder="Senior, Manager, Lead, Director, Principal, DevOps">
           </div>
         </div>
@@ -112,11 +112,11 @@
         <div class="form-section">
           <h2>⚙️ Match Thresholds & Daily Limits</h2>
           <div class="form-group">
-            <label>Minimum AI Match Score (%):</label>
+            <label for="prefMinMatchScore">Minimum AI Match Score (%):</label>
             <input type="number" class="form-control" id="prefMinMatchScore" value="60" min="0" max="100">
           </div>
           <div class="form-group">
-            <label>Max Applications Per Day:</label>
+            <label for="prefMaxDaily">Max Applications Per Day:</label>
             <input type="number" class="form-control" id="prefMaxDaily" value="30" min="1" max="100">
           </div>
           <button type="submit" class="btn-primary">💾 Save Job Preferences</button>
@@ -129,7 +129,7 @@
       <div class="form-section">
         <h2>📄 Resume Manager</h2>
         <div class="form-group">
-          <label>Upload Primary Resume (PDF / DOCX):</label>
+          <label for="resumeFileInput">Upload Primary Resume (PDF / DOCX):</label>
           <input type="file" id="resumeFileInput" accept=".pdf,.docx" class="form-control">
           <button type="button" id="uploadResumeBtn" class="btn-primary" style="margin-top:10px;">⬆️ Upload Resume</button>
         </div>
@@ -138,32 +138,113 @@
 
       <form id="profileForm">
         <div class="form-section">
-          <h2>👤 Candidate Identity & Qualifications</h2>
+          <h2>👤 Candidate Identity & Personal Details</h2>
           <div class="form-group">
-            <label>Current Role / Headline:</label>
+            <label for="profFullName">Full Name:</label>
+            <input type="text" class="form-control" id="profFullName" placeholder="Your Full Name">
+          </div>
+          <div class="form-group">
+            <label for="profEmail">Contact Email:</label>
+            <input type="email" class="form-control" id="profEmail" placeholder="your.email@example.com">
+          </div>
+          <div class="form-group">
+            <label for="profPhone">Phone Number (with Country Code):</label>
+            <input type="text" class="form-control" id="profPhone" placeholder="+91 9876543210">
+          </div>
+          <div class="form-group">
+            <label for="profLocation">Current Location / City:</label>
+            <input type="text" class="form-control" id="profLocation" placeholder="Bengaluru, India">
+          </div>
+          <div style="display:flex; gap:12px;" class="form-group">
+            <div style="flex:1;">
+              <label for="profDOB">Date of Birth:</label>
+              <input type="text" class="form-control" id="profDOB" placeholder="DD/MM/YYYY">
+            </div>
+            <div style="flex:1;">
+              <label for="profGender">Gender:</label>
+              <select class="form-control" id="profGender">
+                <option value="Prefer not to say">Prefer not to say</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Non-binary">Non-binary</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h2>🎓 Education & Experience</h2>
+          <div class="form-group">
+            <label for="profCurrentRole">Current Role / Headline:</label>
             <input type="text" class="form-control" id="profCurrentRole" placeholder="Full Stack Developer (React & Node.js)">
           </div>
           <div class="form-group">
-            <label>Education & Graduation:</label>
-            <input type="text" class="form-control" id="profEducation" placeholder="B.Tech Computer Science, 2025">
+            <label for="profCompany">Current / Last Company:</label>
+            <input type="text" class="form-control" id="profCompany" placeholder="TechCorp Solutions">
+          </div>
+          <div style="display:flex; gap:12px;" class="form-group">
+            <div style="flex:2;">
+              <label for="profEducation">Degree & Institution:</label>
+              <input type="text" class="form-control" id="profEducation" placeholder="B.Tech Computer Science, ABC University">
+            </div>
+            <div style="flex:1;">
+              <label for="profGraduationYear">Graduation Year:</label>
+              <input type="text" class="form-control" id="profGraduationYear" placeholder="2025">
+            </div>
           </div>
           <div class="form-group">
-            <label>Years of Experience:</label>
+            <label for="profYearsExp">Years of Experience:</label>
             <input type="text" class="form-control" id="profYearsExp" placeholder="1 year professional + internships">
           </div>
           <div class="form-group">
-            <label>Technical Skills (Comma-separated):</label>
+            <label for="profSkills">Technical Skills (Comma-separated):</label>
             <input type="text" class="form-control" id="profSkills" placeholder="JavaScript, TypeScript, Python, React, Node.js, PostgreSQL, Docker">
           </div>
-          <div class="form-group">
-            <label>Notice Period / Availability:</label>
-            <input type="text" class="form-control" id="profNoticePeriod" value="30 days">
+        </div>
+
+        <div class="form-section">
+          <h2>💼 Compensation, Notice Period & Preferences</h2>
+          <div style="display:flex; gap:12px;" class="form-group">
+            <div style="flex:1;">
+              <label for="profCurrentCTC">Current CTC (in LPA):</label>
+              <input type="text" class="form-control" id="profCurrentCTC" placeholder="6">
+            </div>
+            <div style="flex:1;">
+              <label for="profExpectedCTC">Expected CTC (in LPA):</label>
+              <input type="text" class="form-control" id="profExpectedCTC" placeholder="12">
+            </div>
           </div>
-          <div class="form-group">
-            <label>Current CTC / Expected CTC (in LPA):</label>
-            <div style="display:flex; gap:12px;">
-              <input type="text" class="form-control" id="profCurrentCTC" placeholder="Current CTC (e.g. 6)">
-              <input type="text" class="form-control" id="profExpectedCTC" placeholder="Expected CTC (e.g. 12)">
+          <div style="display:flex; gap:12px;" class="form-group">
+            <div style="flex:1;">
+              <label for="profNoticePeriod">Notice Period:</label>
+              <input type="text" class="form-control" id="profNoticePeriod" value="30 days">
+            </div>
+            <div style="flex:1;">
+              <label for="profStartDate">Earliest Start Date:</label>
+              <input type="text" class="form-control" id="profStartDate" placeholder="Immediately / 15 days">
+            </div>
+          </div>
+          <div style="display:flex; gap:12px;" class="form-group">
+            <div style="flex:1;">
+              <label for="profWorkAuth">Work Authorization:</label>
+              <input type="text" class="form-control" id="profWorkAuth" value="Authorized to work in my country of residence.">
+            </div>
+            <div style="flex:1;">
+              <label for="profSponsorship">Requires Visa Sponsorship:</label>
+              <select class="form-control" id="profSponsorship">
+                <option value="No">No</option>
+                <option value="Yes">Yes</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:flex; gap:12px;" class="form-group">
+            <div style="flex:1;">
+              <label for="profRelocatePref">Relocation Preference:</label>
+              <input type="text" class="form-control" id="profRelocatePref" value="Yes, open to relocation.">
+            </div>
+            <div style="flex:1;">
+              <label for="profRemotePref">Remote Preference:</label>
+              <input type="text" class="form-control" id="profRemotePref" value="Yes, set up for remote work.">
             </div>
           </div>
           <div class="form-group">
@@ -172,7 +253,7 @@
             <input type="text" class="form-control" id="profGithub" placeholder="GitHub URL" style="margin-bottom:8px;">
             <input type="text" class="form-control" id="profPortfolio" placeholder="Portfolio Website URL">
           </div>
-          <button type="submit" class="btn-primary">💾 Save Profile Details</button>
+          <button type="submit" class="btn-primary">💾 Save Candidate Profile</button>
         </div>
       </form>
     </section>
@@ -269,15 +350,15 @@
       <h2 id="modalTitle" style="margin-bottom:16px;">Sign In to JobPilot AI</h2>
       <form id="authForm">
         <div class="form-group" id="nameGroup" style="display:none;">
-          <label>Full Name:</label>
+          <label for="authName">Full Name:</label>
           <input type="text" class="form-control" id="authName">
         </div>
         <div class="form-group">
-          <label>Email Address:</label>
+          <label for="authEmail">Email Address:</label>
           <input type="email" class="form-control" id="authEmail" required>
         </div>
         <div class="form-group">
-          <label>Password:</label>
+          <label for="authPassword">Password:</label>
           <input type="password" class="form-control" id="authPassword" required>
         </div>
         <button type="submit" class="btn-primary" style="width:100%; margin-top:12px;" id="authSubmitBtn">Login</button>
