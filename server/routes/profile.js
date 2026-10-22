@@ -85,53 +85,59 @@ router.put('/', authenticate, (req, res) => {
   res.json({ message: 'Profile updated successfully.' });
 });
 
-router.post('/resumes', authenticate, upload.single('resume'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No resume file uploaded.' });
+router.post('/resumes', authenticate, (req, res) => {
+  upload.single('resume')(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message || 'File upload error.' });
     }
 
-    const resumeId = crypto.randomUUID();
-    let parsedText = '';
-    let extractedData = {};
-
-    const fileExt = path.extname(req.file.originalname).toLowerCase();
-
-    if (fileExt === '.pdf') {
-      try {
-        parsedText = await resumeParser.extractTextFromPDF(req.file.path);
-        extractedData = resumeParser.parseResumeDetails(parsedText);
-      } catch (e) {
-        console.warn('PDF parsing warning:', e.message);
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No resume file uploaded.' });
       }
-    } else if (fileExt === '.docx' || fileExt === '.doc') {
-      try {
-        parsedText = await resumeParser.extractTextFromDOCX(req.file.path);
-        extractedData = resumeParser.parseResumeDetails(parsedText);
-      } catch (e) {
-        console.warn('DOCX parsing warning:', e.message);
+
+      const resumeId = crypto.randomUUID();
+      let parsedText = '';
+      let extractedData = {};
+
+      const fileExt = path.extname(req.file.originalname).toLowerCase();
+
+      if (fileExt === '.pdf') {
+        try {
+          parsedText = await resumeParser.extractTextFromPDF(req.file.path);
+          extractedData = resumeParser.parseResumeDetails(parsedText);
+        } catch (e) {
+          console.warn('PDF parsing warning:', e.message);
+        }
+      } else if (fileExt === '.docx' || fileExt === '.doc') {
+        try {
+          parsedText = await resumeParser.extractTextFromDOCX(req.file.path);
+          extractedData = resumeParser.parseResumeDetails(parsedText);
+        } catch (e) {
+          console.warn('DOCX parsing warning:', e.message);
+        }
       }
+
+      // Set previous resumes as not primary if this is primary
+      db.prepare('UPDATE resumes SET is_primary = 0 WHERE user_id = ?').run(req.user.userId);
+
+      db.prepare(`
+        INSERT INTO resumes (id, user_id, filename, file_path, file_type, parsed_text, extracted_data, is_primary)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+      `).run(
+        resumeId, req.user.userId, req.file.originalname, req.file.path,
+        fileExt.replace('.', ''),
+        parsedText, JSON.stringify(extractedData)
+      );
+
+      res.json({
+        message: 'Resume uploaded and parsed successfully.',
+        resume: { id: resumeId, filename: req.file.originalname, extractedData }
+      });
+    } catch (parseErr) {
+      res.status(500).json({ error: parseErr.message });
     }
-
-    // Set previous resumes as not primary if this is primary
-    db.prepare('UPDATE resumes SET is_primary = 0 WHERE user_id = ?').run(req.user.userId);
-
-    db.prepare(`
-      INSERT INTO resumes (id, user_id, filename, file_path, file_type, parsed_text, extracted_data, is_primary)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 1)
-    `).run(
-      resumeId, req.user.userId, req.file.originalname, req.file.path,
-      fileExt.replace('.', ''),
-      parsedText, JSON.stringify(extractedData)
-    );
-
-    res.json({
-      message: 'Resume uploaded and parsed successfully.',
-      resume: { id: resumeId, filename: req.file.originalname, extractedData }
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  });
 });
 
 // Secure Download Endpoint with Ownership Validation
