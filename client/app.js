@@ -1,8 +1,30 @@
 /**
  * Web Dashboard Frontend Application Logic
+ * Implements strict DOM escaping and URL validation for XSS security.
  */
 let currentUser = null;
 let token = localStorage.getItem('token');
+
+// Helper to sanitize HTML content to prevent XSS injection
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Helper to validate http/https listing URLs safely
+function safeUrl(url) {
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  if (/^https?:\/\//i.test(trimmed)) {
+    return escapeHtml(trimmed);
+  }
+  return null;
+}
 
 document.addEventListener('DOMContentLoaded', () => {
   setupTabs();
@@ -46,7 +68,6 @@ function setupAuth() {
 
   authBtn.addEventListener('click', () => {
     if (currentUser) {
-      // Logout
       localStorage.removeItem('token');
       currentUser = null;
       token = null;
@@ -171,7 +192,6 @@ async function loadPreferences() {
     document.getElementById('prefMinMatchScore').value = p.min_match_score || 60;
     document.getElementById('prefMaxDaily').value = p.max_applications_per_day || 30;
 
-    // Checkboxes
     document.querySelectorAll('input[name="jobType"]').forEach(cb => {
       cb.checked = (p.job_types || []).includes(cb.value);
     });
@@ -208,15 +228,14 @@ async function loadProfile() {
     document.getElementById('profGithub').value = p.github_url || '';
     document.getElementById('profPortfolio').value = p.portfolio_url || '';
 
-    // Render uploaded resumes
     const list = document.getElementById('uploadedResumesList');
     if (data.resumes && data.resumes.length > 0) {
       list.innerHTML = '<strong>Uploaded Resumes:</strong>' + data.resumes.map(r => `
         <div style="background:var(--bg-input); padding:8px 12px; border-radius:6px; margin-top:6px; display:flex; justify-content:space-between; align-items:center;">
-          <span>📄 ${r.filename} ${r.is_primary ? '<strong style="color:var(--success)">(Primary)</strong>' : ''}</span>
+          <span>📄 ${escapeHtml(r.filename)} ${r.is_primary ? '<strong style="color:var(--success)">(Primary)</strong>' : ''}</span>
           <div>
-            <a href="/api/profile/resumes/download/${r.id}" target="_blank" style="color:var(--primary); text-decoration:none; margin-right:12px; font-weight:600;">Download</a>
-            <button onclick="deleteResume('${r.id}')" style="background:none; border:none; color:var(--danger); cursor:pointer; font-weight:600;">Delete</button>
+            <a href="/api/profile/resumes/download/${escapeHtml(r.id)}" target="_blank" style="color:var(--primary); text-decoration:none; margin-right:12px; font-weight:600;">Download</a>
+            <button onclick="deleteResume('${escapeHtml(r.id)}')" style="background:none; border:none; color:var(--danger); cursor:pointer; font-weight:600;">Delete</button>
           </div>
         </div>
       `).join('');
@@ -274,17 +293,20 @@ async function loadDiscoveredJobs() {
     tbody.innerHTML = data.jobs.map(job => {
       const scoreClass = job.match_score >= 75 ? 'score-high' : job.match_score >= 50 ? 'score-medium' : 'score-low';
       const companyName = job.company && job.company !== 'N/A' ? job.company : 'Unknown company';
+      const validUrl = safeUrl(job.original_url);
+      const actionHtml = validUrl
+        ? `<a href="${validUrl}" target="_blank" rel="noopener noreferrer" style="color:var(--primary); text-decoration:none; font-weight:600;">Open Listing ↗</a>`
+        : '<span style="color:var(--text-muted)">N/A</span>';
+
       return `
         <tr>
-          <td><strong>${job.title}</strong></td>
-          <td>${companyName}</td>
-          <td>${job.location || 'Remote'}</td>
-          <td><span style="text-transform:capitalize; font-weight:600;">${job.portal}</span></td>
+          <td><strong>${escapeHtml(job.title)}</strong></td>
+          <td>${escapeHtml(companyName)}</td>
+          <td>${escapeHtml(job.location || 'Remote')}</td>
+          <td><span style="text-transform:capitalize; font-weight:600;">${escapeHtml(job.portal)}</span></td>
           <td><span class="score-badge ${scoreClass}">${job.match_score}%</span></td>
-          <td>${job.status}</td>
-          <td>
-            <a href="${job.original_url}" target="_blank" rel="noopener noreferrer" style="color:var(--primary); text-decoration:none; font-weight:600;">Open Listing ↗</a>
-          </td>
+          <td>${escapeHtml(job.status)}</td>
+          <td>${actionHtml}</td>
         </tr>
       `;
     }).join('');
@@ -316,16 +338,17 @@ async function loadApplications() {
       const companyName = app.company && app.company !== 'N/A' ? app.company : 'Unknown company';
       const rawDate = app.submitted_at || app.prepared_at || app.created_at;
       const displayDate = rawDate ? new Date(rawDate).toLocaleDateString() : 'N/A';
-      const linkHtml = app.job_url && app.job_url.startsWith('http')
-        ? `<a href="${app.job_url}" target="_blank" rel="noopener noreferrer" style="color:var(--primary); text-decoration:none; font-weight:600;">Open Listing ↗</a>`
+      const validUrl = safeUrl(app.job_url);
+      const linkHtml = validUrl
+        ? `<a href="${validUrl}" target="_blank" rel="noopener noreferrer" style="color:var(--primary); text-decoration:none; font-weight:600;">Open Listing ↗</a>`
         : '<span style="color:var(--text-muted)">N/A</span>';
 
       return `
         <tr>
-          <td><strong>${app.title}</strong></td>
-          <td>${companyName}</td>
-          <td><span style="text-transform:capitalize; font-weight:600;">${app.portal}</span></td>
-          <td><span style="padding:4px 8px; border-radius:12px; background:var(--bg-input); font-weight:600;">${app.status}</span></td>
+          <td><strong>${escapeHtml(app.title)}</strong></td>
+          <td>${escapeHtml(companyName)}</td>
+          <td><span style="text-transform:capitalize; font-weight:600;">${escapeHtml(app.portal)}</span></td>
+          <td><span style="padding:4px 8px; border-radius:12px; background:var(--bg-input); font-weight:600;">${escapeHtml(app.status)}</span></td>
           <td>${verifiedBadge}</td>
           <td>${displayDate}</td>
           <td>${linkHtml}</td>
@@ -342,7 +365,9 @@ async function loadLogs() {
     const consoleEl = document.getElementById('logConsole');
 
     if (data.logs && data.logs.length > 0) {
-      consoleEl.innerHTML = data.logs.map(l => `[${new Date(l.created_at).toLocaleTimeString()}] [${l.portal}] [${l.level}] ${l.message}`).join('\n');
+      consoleEl.innerHTML = data.logs.map(l =>
+        `[${new Date(l.created_at).toLocaleTimeString()}] [${escapeHtml(l.portal)}] [${escapeHtml(l.level)}] ${escapeHtml(l.message)}`
+      ).join('\n');
     }
   } catch (e) {}
 }

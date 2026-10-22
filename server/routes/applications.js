@@ -5,27 +5,35 @@ const express = require('express');
 const router = express.Router();
 const { authenticate } = require('./auth');
 const db = require('../db/database');
-const { CREDIBLE_CONFIRMATION_PATTERNS } = require('./engineApi');
+const { evaluateVerification, CREDIBLE_CONFIRMATION_PATTERNS } = require('../services/verificationService');
 
 router.get('/', authenticate, (req, res) => {
   const { status, portal, limit = 50, page = 1 } = req.query;
-  const offset = (parseInt(page) - 1) * parseInt(limit);
+  const limitNum = Math.min(Math.max(parseInt(limit) || 50, 1), 100);
+  const pageNum = Math.max(parseInt(page) || 1, 1);
+  const offset = (pageNum - 1) * limitNum;
 
   let query = 'SELECT * FROM applications WHERE user_id = ?';
+  let countQuery = 'SELECT COUNT(*) as total FROM applications WHERE user_id = ?';
   const params = [req.user.userId];
+  const countParams = [req.user.userId];
 
   if (status) {
     query += ' AND status = ?';
+    countQuery += ' AND status = ?';
     params.push(status);
+    countParams.push(status);
   }
 
   if (portal) {
     query += ' AND portal = ?';
+    countQuery += ' AND portal = ?';
     params.push(portal);
+    countParams.push(portal);
   }
 
   query += ' ORDER BY COALESCE(submitted_at, prepared_at, created_at) DESC LIMIT ? OFFSET ?';
-  params.push(parseInt(limit), offset);
+  params.push(limitNum, offset);
 
   const applications = db.prepare(query).all(...params);
 
@@ -37,13 +45,14 @@ router.get('/', authenticate, (req, res) => {
     }
   });
 
-  const total = db.prepare('SELECT COUNT(*) as total FROM applications WHERE user_id = ?').get(req.user.userId).total;
+  const total = db.prepare(countQuery).get(...countParams).total;
+  const totalPages = Math.ceil(total / limitNum) || 1;
 
-  res.json({ applications, total, page: parseInt(page), limit: parseInt(limit) });
+  res.json({ applications, total, totalPages, page: pageNum, limit: limitNum });
 });
 
 router.put('/:id/status', authenticate, (req, res) => {
-  const { status, execution_log, verification_evidence, verified } = req.body;
+  const { status, execution_log, verification_evidence } = req.body;
   const allowedStatuses = [
     'Discovered', 'Matched', 'Saved', 'Ready to apply',
     'Application prepared', 'Submitted', 'Submission uncertain',
@@ -55,21 +64,11 @@ router.put('/:id/status', authenticate, (req, res) => {
   }
 
   const evidence = (verification_evidence || execution_log || '').trim();
-  let finalVerified = 0;
-  let finalStatus = status;
+  const evalResult = evaluateVerification(status, evidence);
+  const finalStatus = evalResult.finalStatus;
+  const finalVerified = evalResult.verified;
 
-  if (finalStatus === 'Submitted') {
-    if (evidence && CREDIBLE_CONFIRMATION_PATTERNS.test(evidence)) {
-      finalVerified = 1;
-    } else {
-      finalStatus = 'Submission uncertain';
-      finalVerified = 0;
-    }
-  } else {
-    finalVerified = 0;
-  }
-
-  db.prepare(`
+  const result = db.prepare(`
     UPDATE applications
     SET status = ?,
         execution_log = COALESCE(?, execution_log),
@@ -81,7 +80,11 @@ router.put('/:id/status', authenticate, (req, res) => {
     WHERE id = ? AND user_id = ?
   `).run(finalStatus, execution_log || null, verification_evidence || null, finalVerified, finalStatus, finalStatus, req.params.id, req.user.userId);
 
-  res.json({ message: 'Application status updated.', status: finalStatus, verified: finalVerified });
+  if (result.changes === 0) {
+    return res.status(404).json({ error: 'Application record not found or unauthorized.' });
+  }
+
+  res.json({ message: 'Application status updated.', status: finalStatus, verified: finalVerified, explanation: evalResult.explanation });
 });
 
 // Safe Reconciliation Endpoint - Reconciles Application Pipeline Statuses Based Strictly on Evidence
@@ -103,33 +106,19 @@ router.post('/reconcile', authenticate, (req, res) => {
 
   applications.forEach(app => {
     const evidence = (app.verification_evidence || app.execution_log || '').trim();
-    let newStatus = app.status;
-    let newVerified = 0;
+    const evalResult = evaluateVerification(app.status, evidence);
+    const newStatus = evalResult.finalStatus;
+    const newVerified = evalResult.verified;
 
-    // Resolve company name if empty or N/A
+    // Resolve company name without cross-portal ambiguity
     let resolvedCompany = app.company;
     if (!resolvedCompany || resolvedCompany === '' || resolvedCompany === 'N/A') {
-      const job = db.prepare('SELECT company FROM discovered_jobs WHERE user_id = ? AND (original_url = ? OR job_identifier = ?)').get(userId, app.job_url || '', app.job_url || '');
+      const job = db.prepare('SELECT company FROM discovered_jobs WHERE user_id = ? AND portal = ? AND (original_url = ? OR job_identifier = ?)').get(userId, app.portal, app.job_url || '', app.job_url || '');
       if (job && job.company && job.company !== 'N/A') {
         resolvedCompany = job.company;
       } else {
         resolvedCompany = 'Unknown company';
       }
-    }
-
-    if (app.status === 'Submitted') {
-      if (CREDIBLE_CONFIRMATION_PATTERNS.test(evidence)) {
-        newStatus = 'Submitted';
-        newVerified = 1;
-      } else {
-        newStatus = 'Submission uncertain';
-        newVerified = 0;
-      }
-    } else if (/dry run|would click|form filled/i.test(evidence) || app.status === 'Application prepared') {
-      newStatus = 'Application prepared';
-      newVerified = 0;
-    } else {
-      newVerified = 0;
     }
 
     if (newStatus !== app.status || newVerified !== app.verified || resolvedCompany !== app.company) {

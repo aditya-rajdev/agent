@@ -7,12 +7,13 @@ const crypto = require('crypto');
 const db = require('../db/database');
 const authService = require('../services/authService');
 const { calculateJobMatch } = require('../services/jobMatcherService');
+const { evaluateVerification, CREDIBLE_CONFIRMATION_PATTERNS } = require('../services/verificationService');
 
-// Middleware for Engine API Key Authentication
+// Middleware for Engine API Key Authentication (Header authentication only)
 function authenticateEngine(req, res, next) {
-  const apiKey = req.headers['x-engine-api-key'] || req.query.apiKey;
+  const apiKey = req.headers['x-engine-api-key'];
   if (!apiKey) {
-    return res.status(401).json({ error: 'Missing Engine API Key' });
+    return res.status(401).json({ error: 'Missing Engine API Key header (X-Engine-API-Key required).' });
   }
 
   const user = authService.getUserByApiKey(apiKey);
@@ -45,7 +46,7 @@ router.get('/sync-config', authenticateEngine, (req, res) => {
   try {
     settings.enabled_portals = JSON.parse(settings.enabled_portals || '[]');
   } catch (e) {
-    settings.enabled_portals = ['naukri', 'wellfound', 'indeed'];
+    settings.enabled_portals = ['naukri', 'wellfound', 'indeed', 'linkedin', 'upstox', 'unstop', 'internshala'];
   }
 
   try {
@@ -64,14 +65,14 @@ router.get('/sync-config', authenticateEngine, (req, res) => {
   });
 });
 
-// Helper to resolve company name without fabricating names
+// Helper to resolve company name without fabricating names or cross-portal leakage
 function resolveCompanyName(userId, portal, jobUrl, providedCompany) {
   let company = (providedCompany || '').trim();
   if (company && company !== 'N/A' && company !== 'Unknown company') {
     return company;
   }
 
-  // Look up discovered_jobs by user_id and job_url
+  // Look up discovered_jobs by user_id, portal, and job_url
   if (jobUrl && jobUrl.trim() !== '') {
     const discovered = db.prepare('SELECT company FROM discovered_jobs WHERE user_id = ? AND portal = ? AND (original_url = ? OR job_identifier = ?)').get(userId, portal, jobUrl.trim(), jobUrl.trim());
     if (discovered && discovered.company && discovered.company.trim() !== '' && discovered.company !== 'N/A') {
@@ -130,17 +131,14 @@ router.post('/report-job', authenticateEngine, (req, res) => {
 
     res.json({ status: 'success', jobId, matchScore: matchResult.matchScore, classification: matchResult.classification });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Database operation failed.' });
   }
 });
-
-// Tightened Credible Confirmation Verification Patterns (Application-Specific Only)
-const CREDIBLE_CONFIRMATION_PATTERNS = /thank you for applying|thanks for applying|application (has been )?(received|submitted|sent|complete)|successfully applied|we (have )?received your application|your application is in|applied stamp confirmed|dialog closed, 'applied' stamp confirmed|confirmed after \d+ step\(s\)|verified: in .* applied list/i;
 
 // Report an application attempt or successful submission from local engine
 router.post('/report-application', authenticateEngine, (req, res) => {
   const userId = req.user.id;
-  let { portal, title, company, job_url, status, answers, execution_log, verification_evidence, verified } = req.body;
+  let { portal, title, company, job_url, status, answers, execution_log, verification_evidence } = req.body;
 
   if (!portal || !title) {
     return res.status(400).json({ error: 'Portal and title are required.' });
@@ -150,29 +148,10 @@ router.post('/report-application', authenticateEngine, (req, res) => {
   const normalizedUrl = (job_url || '').trim();
   const evidenceText = (verification_evidence || execution_log || '').trim();
 
-  // Strict Evaluation of Application Lifecycle Status & Verification Rules
-  let finalStatus = status || 'Application prepared';
-  let isVerified = 0;
-
-  if (finalStatus === 'Submitted') {
-    // Requires application-specific confirmation evidence in evidenceText
-    if (evidenceText && CREDIBLE_CONFIRMATION_PATTERNS.test(evidenceText)) {
-      finalStatus = 'Submitted';
-      isVerified = 1;
-    } else {
-      // Demote to Submission uncertain if credible confirmation evidence is absent
-      finalStatus = 'Submission uncertain';
-      isVerified = 0;
-    }
-  } else if (finalStatus === 'Application prepared' || finalStatus === 'would-apply') {
-    finalStatus = 'Application prepared';
-    isVerified = 0;
-  } else if (finalStatus === 'Submission uncertain') {
-    finalStatus = 'Submission uncertain';
-    isVerified = 0;
-  } else {
-    isVerified = 0;
-  }
+  // Evaluate via Centralized Verification Service
+  const evalResult = evaluateVerification(status, evidenceText);
+  const finalStatus = evalResult.finalStatus;
+  const isVerified = evalResult.verified;
 
   const appId = crypto.randomUUID();
 
@@ -198,9 +177,9 @@ router.post('/report-application', authenticateEngine, (req, res) => {
         verification_evidence = excluded.verification_evidence,
         attempt_count = applications.attempt_count + 1,
         verified = excluded.verified,
-        prepared_at = CASE WHEN excluded.status = 'Application prepared' THEN CURRENT_TIMESTAMP ELSE applications.prepared_at END,
-        attempted_at = CASE WHEN excluded.status = 'Submission uncertain' OR excluded.status = 'Submitted' THEN CURRENT_TIMESTAMP ELSE applications.attempted_at END,
-        submitted_at = CASE WHEN excluded.status = 'Submitted' THEN CURRENT_TIMESTAMP ELSE NULL END,
+        prepared_at = CASE WHEN excluded.status = 'Application prepared' THEN COALESCE(applications.prepared_at, CURRENT_TIMESTAMP) ELSE applications.prepared_at END,
+        attempted_at = CASE WHEN excluded.status = 'Submission uncertain' OR excluded.status = 'Submitted' THEN COALESCE(applications.attempted_at, CURRENT_TIMESTAMP) ELSE applications.attempted_at END,
+        submitted_at = CASE WHEN excluded.status = 'Submitted' THEN COALESCE(applications.submitted_at, CURRENT_TIMESTAMP) ELSE NULL END,
         updated_at = CURRENT_TIMESTAMP
     `).run(
       appId, userId, portal, title, normalizedCompany, normalizedUrl, finalStatus,
@@ -212,9 +191,9 @@ router.post('/report-application', authenticateEngine, (req, res) => {
       userId, portal, `Application [${finalStatus}]: "${title}" at "${normalizedCompany || 'Company'}"`
     );
 
-    res.json({ status: 'recorded', appId, finalStatus, verified: isVerified });
+    res.json({ status: 'recorded', appId, finalStatus, verified: isVerified, explanation: evalResult.explanation });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Database operation failed.' });
   }
 });
 

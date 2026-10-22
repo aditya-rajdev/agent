@@ -6,7 +6,15 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const db = require('../db/database');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'ai-job-agent-secret-key-2026';
+// Require JWT_SECRET from environment or generate a secure runtime secret
+let JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('FATAL: JWT_SECRET environment variable must be set in production!');
+  }
+  console.warn('[SECURITY WARNING] JWT_SECRET is not set in environment. Generating runtime secret for dev session.');
+  JWT_SECRET = 'dev_runtime_secret_' + crypto.randomBytes(32).toString('hex');
+}
 
 function registerUser({ email, password, name, phone }) {
   const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email.toLowerCase());
@@ -35,7 +43,7 @@ function registerUser({ email, password, name, phone }) {
 
   const insertAutomation = db.prepare(`
     INSERT INTO automation_settings (user_id, enabled, dry_run, enabled_portals)
-    VALUES (?, 1, 1, '["naukri", "wellfound", "indeed"]')
+    VALUES (?, 1, 1, '["naukri", "wellfound", "indeed", "linkedin", "upstox", "unstop", "internshala"]')
   `);
 
   const transaction = db.transaction(() => {
@@ -75,7 +83,8 @@ function verifyToken(token) {
 }
 
 function getUserByApiKey(apiKey) {
-  return db.prepare('SELECT id, email, name FROM users WHERE engine_api_key = ?').get(apiKey);
+  if (!apiKey || typeof apiKey !== 'string') return null;
+  return db.prepare('SELECT id, email, name FROM users WHERE engine_api_key = ?').get(apiKey.trim());
 }
 
 module.exports = {
